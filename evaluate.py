@@ -3,6 +3,7 @@
 
   python evaluate.py            # runs/goal_ant/eval.json と eval.png を出力
   python evaluate.py --routes   # デモ経路ごとの成功率 runs/goal_ant/route_eval.json
+  --robot dog を付けると犬型（runs/goal_dog/）
 評価方法：ランダムな方向・距離 4〜6 m のゴールを 1 つ置き、30 秒以内に半径 0.6 m に入れば成功。
 """
 import glob
@@ -16,13 +17,12 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from demo import RUN, Policy, vecnorm_for  # noqa: E402
-from goal_ant import GoalAntEnv  # noqa: E402
+from demo import HERE, ROBOTS, Policy, vecnorm_for  # noqa: E402
 
 
-def evaluate(model_path, n=30, limit=30.0, seed=100):
-    policy = Policy(model_path, vecnorm_for(model_path))
-    env = GoalAntEnv()
+def evaluate(model_path, n=30, limit=30.0, seed=100, robot="ant"):
+    policy = Policy(model_path, vecnorm_for(model_path), robot)
+    env = ROBOTS[robot]()
     env.fixed_goal = True
     rng = np.random.default_rng(seed)
     ok, times, fell = 0, [], 0
@@ -47,14 +47,14 @@ def evaluate(model_path, n=30, limit=30.0, seed=100):
 ROUTES = [["red", "blue", "home"], ["yellow", "home"], ["red", "blue", "green", "yellow", "home"]]
 
 
-def evaluate_routes(model_path, n=20):
+def evaluate_routes(model_path, n=20, robot="ant"):
     """デモと同じ経由地リストを n 回（初期姿勢の乱数違い）歩かせた成功率。"""
     from demo import run
 
-    policy = Policy(model_path, vecnorm_for(model_path))
+    policy = Policy(model_path, vecnorm_for(model_path), robot)
     out = {}
     for route in ROUTES:
-        logs = [run(policy, route, render=False, seed=s) for s in range(n)]
+        logs = [run(policy, route, render=False, seed=s, robot=robot) for s in range(n)]
         ok = [lg for lg in logs if len(lg["visited"]) == len(route) and not lg["fell"]]
         out["→".join(route)] = {
             "success": len(ok) / n,
@@ -66,10 +66,12 @@ def evaluate_routes(model_path, n=20):
 
 
 def main():
+    robot = "dog" if "--robot" in sys.argv and sys.argv[sys.argv.index("--robot") + 1] == "dog" else "ant"
+    RUN = os.path.join(HERE, "runs", f"goal_{robot}")
     if "--routes" in sys.argv:
-        model = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "final_model.zip")
+        model = os.path.join(HERE, "models", "dog_model.zip" if robot == "dog" else "final_model.zip")
         with open(os.path.join(RUN, "route_eval.json"), "w", encoding="utf-8") as f:
-            json.dump(evaluate_routes(model), f, indent=1, ensure_ascii=False)
+            json.dump(evaluate_routes(model, robot=robot), f, indent=1, ensure_ascii=False)
         return
     models = sorted(glob.glob(os.path.join(RUN, "ckpt", "model_*.zip")))
     steps = [int(os.path.basename(m)[6:15]) for m in models]
@@ -81,7 +83,7 @@ def main():
         if str(steps[i]) in cache:
             out[steps[i]] = cache[str(steps[i])]
             continue
-        r = evaluate(models[i])
+        r = evaluate(models[i], robot=robot)
         out[steps[i]] = r
         print(steps[i], r, flush=True)
         with open(path, "w") as f:

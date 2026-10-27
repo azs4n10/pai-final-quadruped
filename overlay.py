@@ -99,3 +99,15 @@ def slide_title(slide_path, title, subtitle):
     d.text((88, 700), title, font=font(60, "bold"), fill=(20, 20, 20))
     d.text((92, 790), subtitle, font=font(29), fill=(110, 104, 80))
     return np.asarray(img)
+
+
+def compare_card(size, title, subtitle, labels, bg=(14, 17, 22)):
+    """左右比較用の背景（上に見出し、映像の下に左右それぞれの説明）。"""
+    img = Image.new("RGB", size, bg)
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, 0, 14, size[1]), fill=(255, 140, 0))
+    d.text((80, 90), title, font=font(64, "bold"), fill=(255, 255, 255))
+    d.text((84, 190), subtitle, font=font(36), fill=(255, 175, 70))
+    for x, label in zip((40, 960), labels):
+        d.text((x + 460, 855), label, font=font(38, "bold"), fill=(220, 225, 232), anchor="ma")
+    return np.asarray(img)

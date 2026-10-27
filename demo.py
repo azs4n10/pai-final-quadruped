@@ -15,17 +15,21 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from goal_ant import LANDMARK_JA, LANDMARKS, GoalAntEnv
+from goal_dog import GoalDogEnv
 from overlay import font, minimap, panel, route_text
 from planner import plan
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(HERE, "runs", "goal_ant")
+ROBOTS = {"ant": GoalAntEnv, "dog": GoalDogEnv}
+# 追従カメラ（距離, 注視点の高さ, 追従の速さ）
+CAMERA = {"ant": (6.0, 0.4, 0.08), "dog": (3.6, 0.25, 0.25)}
 
 
 class Policy:
-    def __init__(self, model_path, vecnorm_path):
+    def __init__(self, model_path, vecnorm_path, robot="ant"):
         self.model = PPO.load(model_path, device="cpu")
-        self.vn = VecNormalize.load(vecnorm_path, DummyVecEnv([GoalAntEnv]))
+        self.vn = VecNormalize.load(vecnorm_path, DummyVecEnv([ROBOTS[robot]]))
         self.vn.training = False
 
     def __call__(self, obs):
@@ -37,14 +41,16 @@ def vecnorm_for(model_path):
     base = os.path.basename(model_path)
     if base.startswith("model_"):
         return os.path.join(os.path.dirname(model_path), base.replace("model_", "vecnorm_").replace(".zip", ".pkl"))
-    return os.path.join(os.path.dirname(model_path), "final_vecnorm.pkl")
+    return os.path.join(os.path.dirname(model_path), base.replace("_model.zip", "_vecnorm.pkl"))
 
 
 def run(policy, route, *, size=(1920, 1080), seconds_per_leg=40.0, max_seconds=None, seed=0,
-        render=True, instruction="", reply="", label="", speed=1, on_frame=None):
+        render=True, instruction="", reply="", label="", speed=1, on_frame=None, robot="ant", fps=20):
     """route を順に歩かせる。返り値はログ（到達・時間など）。"""
     w, h = size
-    env = GoalAntEnv(render_mode="rgb_array" if render else None, width=w, height=h, camera_id=-1)
+    env = ROBOTS[robot](render_mode="rgb_array" if render else None, width=w, height=h, camera_id=-1)
+    cam_dist, cam_z, cam_gain = CAMERA[robot]
+    next_frame = 0.0
     env.fixed_goal = True
     env.reset(seed=seed)
     viewer = None
@@ -66,13 +72,14 @@ def run(policy, route, *, size=(1920, 1080), seconds_per_leg=40.0, max_seconds=N
             if terminated:
                 fell = True
                 events.append({"t": round(t, 2), "fell": True})
-            if render and int(round(t / env.dt)) % speed == 0:
+            if render and t + 1e-9 >= next_frame:
+                next_frame += speed / fps
                 if viewer is None:
                     env.render()
                     viewer = env.mujoco_renderer._get_viewer("rgb_array")
-                cam_xy = 0.92 * cam_xy + 0.08 * info["xy"]
-                viewer.cam.lookat[:] = [cam_xy[0], cam_xy[1], 0.4]
-                viewer.cam.distance = 6.0
+                cam_xy = (1 - cam_gain) * cam_xy + cam_gain * info["xy"]
+                viewer.cam.lookat[:] = [cam_xy[0], cam_xy[1], cam_z]
+                viewer.cam.distance = cam_dist
                 viewer.cam.azimuth = 120.0
                 viewer.cam.elevation = -32.0
                 frame = env.render()
@@ -140,7 +147,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--text", default="", help="日本語の指示（LLM で経由地に変換）")
     p.add_argument("--route", default="", help="経由地をカンマ区切りで直接指定（例: red,blue,home）")
-    p.add_argument("--model", default=os.path.join(HERE, "models", "final_model.zip"))
+    p.add_argument("--robot", default="ant", choices=list(ROBOTS))
+    p.add_argument("--model", default=None, help="既定は models/final_model.zip（ant）/ models/dog_model.zip（dog）")
     p.add_argument("--reply", default="", help="--text と --route を両方渡したときに表示する LLM の返答")
     p.add_argument("--label", default="")
     p.add_argument("--seconds", type=float, default=None, help="打ち切り秒数")
@@ -160,11 +168,13 @@ def main():
         route = [r for r in args.route.split(",") if r]
     print(f"[plan] {source}: {route_text(route)}  {reply}", flush=True)
 
-    policy = Policy(args.model, vecnorm_for(args.model))
+    if args.model is None:
+        args.model = os.path.join(HERE, "models", "dog_model.zip" if args.robot == "dog" else "final_model.zip")
+    policy = Policy(args.model, vecnorm_for(args.model), args.robot)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     writer = imageio.get_writer(args.out, fps=20, quality=8, macro_block_size=8)
     log = run(policy, route, max_seconds=args.seconds, seed=args.seed, instruction=args.text, reply=reply,
-              label=args.label, speed=args.speed, on_frame=writer.append_data)
+              label=args.label, speed=args.speed, on_frame=writer.append_data, robot=args.robot)
     writer.close()
     log.update({"instruction": args.text, "reply": reply, "planner": source, "model": args.model})
     with open(os.path.splitext(args.out)[0] + ".json", "w", encoding="utf-8") as f:

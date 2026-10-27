@@ -12,21 +12,23 @@ import sys
 import imageio.v2 as imageio
 import imageio_ffmpeg
 
-from overlay import slide_title, title_card
+from overlay import compare_card, slide_title, title_card
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUN = os.path.join(HERE, "runs", "goal_ant")
-CLIPS = os.path.join(HERE, "runs", "clips")
+ROBOT = "dog"  # 提出動画に使うロボット（ant / dog）
+RUN = os.path.join(HERE, "runs", f"goal_{ROBOT}")
+CLIPS = os.path.join(HERE, "runs", "clips" if ROBOT == "ant" else f"clips_{ROBOT}")
 SIZE = (1920, 1080)
 FPS = 30
 
 # 学習の成長（同じゴール＝赤い柱、各 6 秒）
-GROWTH = [
-    ("000000016", "学習前（ランダムな動き）"),
-    ("001000000", "学習 100万ステップ"),
-    ("002000000", "学習 200万ステップ"),
-    (None, "学習 700万ステップ（採用モデル）"),
-]
+ADOPTED = {"ant": 7_000_000, "dog": 2_000_000}[ROBOT]  # 採用したチェックポイントのステップ数
+GROWTH = {
+    "ant": [("000000016", "学習前（ランダムな動き）"), ("001000000", "学習 100万ステップ"),
+            ("002000000", "学習 200万ステップ"), (None, "学習 700万ステップ（採用モデル）")],
+    "dog": [("000000016", "学習前（ランダムな動き）"), ("001000000", "学習 100万ステップ"), (None, "")],
+}[ROBOT]
+DEMO_SEED = 1
 DEMOS = [
     ("demo1", "赤い柱に寄ってから青い柱へ行き、最後はホームに戻って", 1),
     ("demo2", "黄色い柱に荷物を届けたら帰ってきて", 1),
@@ -35,7 +37,9 @@ DEMOS = [
 
 
 def model_path(tag):
-    return os.path.join(HERE, "models", "final_model.zip") if tag is None else os.path.join(RUN, "ckpt", f"model_{tag}.zip")
+    if tag is None:
+        return os.path.join(HERE, "models", "final_model.zip" if ROBOT == "ant" else f"{ROBOT}_model.zip")
+    return os.path.join(RUN, "ckpt", f"model_{tag}.zip")
 
 
 def render_clips(force=False):
@@ -43,19 +47,25 @@ def render_clips(force=False):
     py = sys.executable
     for i, (tag, label) in enumerate(GROWTH):
         out = os.path.join(CLIPS, f"growth{i}.mp4")
+        if tag is None:
+            label = f"学習 {ADOPTED // 10000}万ステップ（採用モデル）"
         if force or not os.path.exists(out):
-            subprocess.run([py, os.path.join(HERE, "demo.py"), "--route", "red,home", "--model", model_path(tag),
-                            "--label", label, "--seconds", "6", "--out", out], check=True)
+            subprocess.run([py, os.path.join(HERE, "demo.py"), "--robot", ROBOT, "--route", "red,home", "--model",
+                            model_path(tag), "--label", label, "--seconds", "6", "--out", out], check=True)
     for name, text, speed in DEMOS:
         out = os.path.join(CLIPS, f"{name}.mp4")
         if force or not os.path.exists(out):
-            cmd = [py, os.path.join(HERE, "demo.py"), "--text", text, "--speed", str(speed), "--seed", "1", "--out", out]
+            cmd = [py, os.path.join(HERE, "demo.py"), "--robot", ROBOT, "--text", text, "--speed", str(speed),
+                   "--seed", str(DEMO_SEED), "--out", out]
             log_path = os.path.splitext(out)[0] + ".json"
+            if not os.path.exists(log_path):  # LLM の計画は ant 版の録画時の結果を使う
+                log_path = os.path.join(HERE, "runs", "clips", f"{name}.json")
             prev = json.load(open(log_path, encoding="utf-8")) if os.path.exists(log_path) else None
             if prev:  # LLM の計画は前回の結果を使い回す（温度 0 なので同じ出力）
                 cmd += ["--route", ",".join(prev["route"]), "--reply", prev["reply"]]
             subprocess.run(cmd, check=True)
             if prev:
+                log_path = os.path.splitext(out)[0] + ".json"
                 log = json.load(open(log_path, encoding="utf-8"))
                 log["planner"] = prev["planner"]
                 with open(log_path, "w", encoding="utf-8") as f:
@@ -73,22 +83,43 @@ def card(name, seconds, *a, frame=None, **kw):
     return out
 
 
+def compare_clip():
+    """初版（Ant）と犬型を、同じ指示の録画で左右に並べる。"""
+    left, right = os.path.join(HERE, "runs", "clips", "demo2.mp4"), os.path.join(CLIPS, "demo2.mp4")
+    lt = json.load(open(os.path.join(HERE, "runs", "clips", "demo2.json"), encoding="utf-8"))["time"]
+    rt = json.load(open(os.path.join(CLIPS, "demo2.json"), encoding="utf-8"))["time"]
+    bg = os.path.join(CLIPS, "compare_bg.png")
+    imageio.imwrite(bg, compare_card(SIZE, "初版から犬型へ作り直し", "同じ指示「黄色い柱に荷物を届けたら帰ってきて」（等速）",
+                                     [f"初版：Ant（8関節・クモ型）  {lt:.1f} 秒", f"改良版：自作の犬型（12関節）  {rt:.1f} 秒"]))
+    out = os.path.join(CLIPS, "compare.mp4")
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    subprocess.run([ff, "-y", "-loglevel", "error", "-loop", "1", "-i", bg, "-i", left, "-i", right, "-filter_complex",
+                    "[1:v]scale=920:-2[a];[2:v]scale=920:-2[b];[0:v][a]overlay=40:300:eof_action=repeat[t];"
+                    "[t][b]overlay=960:300:eof_action=repeat,fps=30,format=yuv420p[out]",
+                    "-map", "[out]", "-t", f"{max(lt, rt) + 1.5:.2f}", "-c:v", "libx264", "-crf", "18", out], check=True)
+    return out
+
+
 def summary_lines():
     lines = []
     ev_path = os.path.join(RUN, "eval.json")
     if os.path.exists(ev_path):
         ev = json.load(open(ev_path))
-        last = ev["7000000"]  # 採用モデル
+        last = ev[str(ADOPTED)]  # 採用モデル
         first = ev[min(ev, key=int)]
-        lines.append(f"ゴール到達率（4〜6 m 先・30 秒以内）：学習前 {first['success']*100:.0f}% → 学習後（700万ステップ） {last['success']*100:.0f}%")
+        e100 = os.path.join(RUN, "eval100.json")  # 採用モデルは 100 回で測り直した値を使う
+        if os.path.exists(e100):
+            last = json.load(open(e100))[f"100trials_{ADOPTED // 1_000_000}M"]
+        lines.append(f"ゴール到達率（4〜6 m 先・30 秒以内）：学習前 {first['success']*100:.0f}% → "
+                     f"学習後（{ADOPTED // 10000}万ステップ） {last['success']*100:.0f}%")
     rt_path = os.path.join(RUN, "route_eval.json")
     if os.path.exists(rt_path):
         rt = json.load(open(rt_path, encoding="utf-8"))
         rates = " / ".join(f"{v['success']*100:.0f}%" for v in rt.values())
         lines.append(f"デモ3経路の成功率（各20回）：{rates}")
-    lines += ["失敗は歩行中の転倒と、途中で進めなくなる停止。回復動作の追加が今後の課題",
+    lines += ["失敗は方向転換中の転倒と、しゃがんだまま止まる停止（いずれも 5% 以下）",
               "LLM はローカル実行（gemma4 / Ollama）。外部 API なしで動作",
-              "今後：障害物回避、実機（四足ロボット）への sim-to-real"]
+              "今後：障害物回避、転倒からの起き上がり、実機の四足ロボットへの sim-to-real"]
     return lines
 
 
@@ -111,14 +142,16 @@ def main():
     parts.append(card("system", 8, "しくみ", "", [
         "① 日本語の指示を、ローカルLLM（gemma4）が経由地のリストに変換",
         "② 強化学習で身につけた「ゴールまで歩く」方策が、経由地を1つずつ目指す",
-        "③ 物理シミュレータ MuJoCo 上の4脚ロボット（Ant）で実行",
-        "   観測：関節の角度・速度 ＋ ゴールの方向と距離（胴体から見た向き）",
-        "   報酬：ゴールに近づいた速さ ＋ 到着ボーナス − 転倒・無駄な力",
+        "③ 物理シミュレータ MuJoCo 上に自作した犬型ロボット（12関節）で実行",
+        "   観測：姿勢・関節の角度と速度 ＋ ゴールの方向と距離（胴体から見た向き）",
+        "   報酬：ゴールに近づいた速さ ＋ 到着ボーナス ＋ 足を上げた歩き − 傾き・腹ばい・急な動き",
     ]))
     parts.append(card("growth", 3, "学習による成長", "同じゴール（赤い柱 → ホーム）を目指す様子を、学習段階ごとに6秒ずつ比較"))
     parts += [os.path.join(CLIPS, f"growth{i}.mp4") for i in range(len(GROWTH))]
     parts.append(card("demo", 3, "日本語で指示してみる", "指示 → LLM が経由地を計画 → 歩いて順に回る（等速）"))
     parts += [os.path.join(CLIPS, f"{name}.mp4") for name, _, _ in DEMOS]
+    if ROBOT == "dog":
+        parts.append(compare_clip())
     parts.append(card("summary", 8, "まとめ", "", summary_lines()))
     parts.append(args.ed)
 

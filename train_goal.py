@@ -2,6 +2,7 @@
 GoalAnt を PPO で学習する（CPU 並列）。
 
   python train_goal.py --steps 20000000
+  python train_goal.py --env GoalDog-v0 --steps 30000000   # 犬型
 途中経過のチェックポイントは runs/goal_ant/ckpt/ に保存される（動画の「成長記録」に使う）。
 """
 import argparse
@@ -16,6 +17,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
 import goal_ant  # noqa: F401  (GoalAnt-v0 を登録)
+import goal_dog  # noqa: F401  (GoalDog-v0 を登録)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -50,17 +52,20 @@ class CheckpointCallback(BaseCallback):
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0"])
     p.add_argument("--steps", type=int, default=20_000_000)
     p.add_argument("--n-envs", type=int, default=16)
     p.add_argument("--save-every", type=int, default=1_000_000)
-    p.add_argument("--out", default=os.path.join(HERE, "runs", "goal_ant"))
+    p.add_argument("--out", default=None, help="既定は runs/goal_ant または runs/goal_dog")
     args = p.parse_args()
 
+    if args.out is None:
+        args.out = os.path.join(HERE, "runs", "goal_dog" if args.env == "GoalDog-v0" else "goal_ant")
     torch.set_num_threads(4)
     ckpt = os.path.join(args.out, "ckpt")
     os.makedirs(ckpt, exist_ok=True)
 
-    venv = make_vec_env("GoalAnt-v0", n_envs=args.n_envs, seed=0, vec_env_cls=SubprocVecEnv)
+    venv = make_vec_env(args.env, n_envs=args.n_envs, seed=0, vec_env_cls=SubprocVecEnv)
     venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
 
     model = PPO(
@@ -75,7 +80,7 @@ def main():
         clip_range=0.2,
         ent_coef=0.0,
         max_grad_norm=0.5,
-        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.5),
+        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.5 if args.env == "GoalAnt-v0" else -0.7),
         device="cpu",
         verbose=0,
         seed=0,
