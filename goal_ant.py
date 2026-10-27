@@ -8,6 +8,7 @@ Gymnasium の Ant-v5 をベースに、
 - 床にランドマーク（色付きの柱）とゴール旗を描画（見た目だけで物理干渉なし）
 """
 import os
+import re
 
 import gymnasium as gym
 import numpy as np
@@ -61,6 +62,7 @@ def build_xml():
     xml = xml.replace('reflectance="0.5" shininess="1" specular="1" texrepeat="60 60"',
                       'reflectance="0.15" shininess="0.3" specular="0.3" texrepeat="40 40"')
     xml = xml.replace('rgba="0.8 0.9 0.8 1" size="40 40 40" type="plane"', 'rgba="1 1 1 1" size="40 40 40" type="plane"')
+    xml = robot_look(xml)
     # 1080p でオフスクリーン描画できるようにする（動画用）
     xml = xml.replace(
         "<custom>",
@@ -69,6 +71,43 @@ def build_xml():
     os.makedirs(os.path.dirname(XML_PATH), exist_ok=True)
     with open(XML_PATH, "w", encoding="utf-8") as f:
         f.write(xml)
+
+
+def robot_look(xml):
+    """見た目だけ機械らしくする。足す部品は質量 0・接触なしなので、物理は元の Ant と同じ。"""
+    deco = 'contype="0" conaffinity="0" mass="0"'
+    xml = xml.replace(
+        '<material name="geom" texture="texgeom" texuniform="true"/>',
+        '<material name="geom" texture="texgeom" texuniform="true"/>\n'
+        '    <material name="shell" specular="0.6" shininess="0.7"/>\n'
+        '    <material name="metal" specular="0.8" shininess="0.9"/>',
+    )
+    # 胴体：白い外殻＋オレンジの帯＋上面のセンサー
+    xml = xml.replace(
+        '<geom name="torso_geom" pos="0 0 0" size="0.25" type="sphere"/>',
+        '<geom name="torso_geom" pos="0 0 0" size="0.25" type="sphere" material="shell" rgba="0.93 0.94 0.96 1"/>'
+        f'<geom type="cylinder" size="0.257 0.035" material="shell" rgba="1 0.5 0.05 1" {deco}/>'
+        f'<geom type="cylinder" pos="0 0 0.25" size="0.1 0.05" material="metal" rgba="0.18 0.2 0.23 1" {deco}/>'
+        f'<geom type="cylinder" pos="0 0 0.26" size="0.104 0.012" rgba="0.2 0.85 1 1" {deco}/>',
+    )
+    # 脚：付け根は白、脚はガンメタル、関節と足先に黒い球
+    for i in range(1, 5):
+        xml = xml.replace(f'name="aux_{i}_geom" size="0.08"', f'name="aux_{i}_geom" size="0.08" material="shell" rgba="0.93 0.94 0.96 1"')
+    for leg in ["left_leg", "right_leg", "back_leg", "rightback_leg"]:
+        xml = xml.replace(
+            f'name="{leg}_geom" size="0.08" type="capsule"/>',
+            f'name="{leg}_geom" size="0.08" type="capsule" material="metal" rgba="0.3 0.33 0.37 1"/>'
+            f'<geom type="sphere" size="0.105" material="metal" rgba="0.12 0.13 0.15 1" {deco}/>',
+        )
+    for ankle in ["left_ankle", "right_ankle", "third_ankle", "fourth_ankle"]:
+        xml = re.sub(
+            rf'<geom fromto="0\.0 0\.0 0\.0 (\S+) (\S+) 0\.0" name="{ankle}_geom" size="0\.08" type="capsule"/>',
+            lambda m: m.group(0)[:-2] + ' material="metal" rgba="0.3 0.33 0.37 1"/>'
+            + f'<geom type="sphere" pos="{m.group(1)} {m.group(2)} 0" size="0.1" material="metal" rgba="0.12 0.13 0.15 1" {deco}/>'
+            + f'<geom type="sphere" size="0.1" material="metal" rgba="0.12 0.13 0.15 1" {deco}/>',
+            xml,
+        )
+    return xml
 
 
 def yaw_of(quat):
