@@ -90,3 +90,12 @@ def title_card(size, title, subtitle="", lines=(), bg=(14, 17, 22)):
         d.text((124, y), line, font=font(38), fill=(220, 225, 232))
         y += 64
     return np.asarray(img)
+
+
+def slide_title(slide_path, title, subtitle):
+    """講座の「最終課題発表」スライドの空き（ロゴの上）に作品タイトルを書き込む。"""
+    img = Image.open(slide_path).convert("RGB").resize((1920, 1080))
+    d = ImageDraw.Draw(img)
+    d.text((88, 700), title, font=font(60, "bold"), fill=(20, 20, 20))
+    d.text((92, 790), subtitle, font=font(29), fill=(110, 104, 80))
+    return np.asarray(img)

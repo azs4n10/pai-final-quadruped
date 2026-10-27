@@ -1,7 +1,7 @@
 """
 提出動画を組み立てる：OP → タイトル → 仕組み → 学習の成長 → 指示デモ×3 → まとめ → ED
 
-  python make_video.py --op path/to/OP.mp4 --ed path/to/ED.mp4
+  python make_video.py --op path/to/OP.mp4 --ed path/to/ED.mp4 --slide path/to/slide.jpg
 """
 import argparse
 import json
@@ -12,7 +12,7 @@ import sys
 import imageio.v2 as imageio
 import imageio_ffmpeg
 
-from overlay import title_card
+from overlay import slide_title, title_card
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(HERE, "runs", "goal_ant")
@@ -53,9 +53,10 @@ def render_clips(force=False):
                             "--seed", "1", "--out", out], check=True)
 
 
-def card(name, seconds, *a, **kw):
+def card(name, seconds, *a, frame=None, **kw):
     out = os.path.join(CLIPS, f"card_{name}.mp4")
-    frame = title_card(SIZE, *a, **kw)
+    if frame is None:
+        frame = title_card(SIZE, *a, **kw)
     w = imageio.get_writer(out, fps=FPS, quality=8, macro_block_size=8)
     for _ in range(int(seconds * FPS)):
         w.append_data(frame)
@@ -86,14 +87,18 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--op", required=True)
     p.add_argument("--ed", required=True)
+    p.add_argument("--slide", default=None, help="講座の最終課題発表スライド（タイトル画面に使う）")
     p.add_argument("--out", default=os.path.join(HERE, "runs", "final_video.mp4"))
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
 
     render_clips(args.force)
     parts = [args.op]
-    parts.append(card("title", 4, "ことばで動く四足配送ロボット",
-                      "ローカルLLM × 強化学習（PPO）で「指示どおりに歩く」"))
+    title, sub = "ことばで動く四足配送ロボット", "ローカルLLM × 強化学習（PPO）で「指示どおりに歩く」"
+    if args.slide:
+        parts.append(card("title", 4, frame=slide_title(args.slide, title, sub)))
+    else:
+        parts.append(card("title", 4, title, sub))
     parts.append(card("system", 8, "しくみ", "", [
         "① 日本語の指示を、ローカルLLM（gemma4）が経由地のリストに変換",
         "② 強化学習で身につけた「ゴールまで歩く」方策が、経由地を1つずつ目指す",
