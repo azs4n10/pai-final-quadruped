@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>ことばで動く四足配送ロボット</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  body { font-family: "Yu Gothic", "Meiryo", sans-serif; font-size: 10.5pt; line-height: 1.65; color: #1b1f24; }
+  h1 { font-size: 19pt; margin: 0 0 2px; }
+  .sub { color: #b35c00; font-size: 11pt; margin-bottom: 10px; }
+  h2 { font-size: 13pt; border-left: 5px solid #f08c00; padding-left: 8px; margin: 18px 0 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 9.8pt; }
+  th, td { border: 1px solid #c9ced6; padding: 3px 7px; text-align: left; vertical-align: top; }
+  th { background: #f2f4f7; white-space: nowrap; }
+  td.n { text-align: right; }
+  .flow { display: flex; align-items: center; gap: 6px; margin: 8px 0; font-size: 9.5pt; }
+  .flow div.box { flex: 1; border: 1.5px solid #f08c00; border-radius: 6px; padding: 5px 8px; text-align: center; background: #fff8ef; }
+  .flow div.ar { color: #888; font-size: 14pt; }
+  figure { margin: 6px 0; text-align: center; }
+  figure img { max-width: 100%; border-radius: 4px; }
+  figcaption { font-size: 9pt; color: #555; }
+  .two { display: flex; gap: 8px; }
+  .two figure { flex: 1; }
+  ul { margin: 4px 0; padding-left: 20px; }
+  code { font-family: Consolas, monospace; font-size: 9.2pt; background: #f2f4f7; padding: 0 3px; }
+  .pb { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<h1>ことばで動く四足配送ロボット</h1>
+<div class="sub">ローカルLLM × 強化学習（PPO）による、日本語指示での目標到達歩行 ― Physical AI 応用1 最終課題</div>
+
+<h2>1. 概要</h2>
+<p>日本語で「赤い柱に寄ってから青い柱へ行き、最後はホームに戻って」と指示すると、4脚ロボットが指示どおりの順に各地点を歩いて回るシステムを、物理シミュレータ MuJoCo 上に実装した。指示の解釈はローカルで動く LLM（gemma4 / Ollama）が担当し、歩行そのものは強化学習（PPO）で獲得した「指定したゴールまで歩く」方策が担当する。</p>
+
+<div class="flow">
+  <div class="box">日本語の指示</div><div class="ar">→</div>
+  <div class="box">ローカルLLM<br>（gemma4）</div><div class="ar">→</div>
+  <div class="box">経由地リスト<br>例: 赤→青→<br>ホーム</div><div class="ar">→</div>
+  <div class="box">ゴール到達方策<br>（PPO で学習）</div><div class="ar">→</div>
+  <div class="box">4脚ロボット<br>（MuJoCo / Ant）</div>
+</div>
+
+<h2>2. 目的</h2>
+<ul>
+  <li>脚ロボットは段差や不整地に強く、倉庫・施設内の巡回や配送への応用が期待される。現場の人が専門知識なしに「どこへ行ってほしいか」を言葉で伝えられれば使い勝手が大きく上がる。</li>
+  <li>そこで「言葉の理解（LLM）」と「身体の制御（強化学習）」を役割分担させ、それぞれ得意な部分だけを任せる構成で、言葉から歩行までを一貫して動かすことを目標とした。</li>
+  <li>機密性の高い現場でも使えるよう、LLM は外部 API を使わずローカルで動かす。</li>
+</ul>
+
+<h2>3. 手法</h2>
+<p><b>(1) ゴール到達環境（GoalAnt）</b>　Gymnasium の Ant-v5（4脚・8関節）をもとに、観測と報酬を「前に進む」から「ゴールへ向かう」に作り替えた。</p>
+<table>
+  <tr><th style="width:18%">観測（32次元）</th><td>関節角度・速度など本体の状態（27次元）＋ ゴール方向の単位ベクトル（胴体座標系 2 / 世界座標系 2）＋ ゴールまでの距離（5 m で頭打ち）</td></tr>
+  <tr><th>報酬</th><td>ゴールに近づいた速さ（距離の減少量 / Δt）＋ 姿勢維持 0.25 − 0.1 × 制御入力² ＋ 到着ボーナス 5（半径 0.6 m 以内）。転倒で終了</td></tr>
+  <tr><th>ゴールの出し方</th><td>現在地から 1.5〜5 m・ランダムな方向に置き、到着するたびに次のゴールを出し直す（1 エピソード 50 秒の中で何度も到達を練習）</td></tr>
+  <tr><th>学習</th><td>PPO（Stable-Baselines3）、16 並列環境、方策・価値とも 256×256 の MLP、観測・報酬の正規化あり、計 1,500 万ステップ（CPU のみで約 2 時間）</td></tr>
+</table>
+<p><b>(2) LLM プランナー</b>　地点名と座標の一覧をシステムプロンプトで与え、指示を <code>{"route": [...], "reply": "..."}</code> の JSON に変換させる。Ollama の構造化出力（JSON Schema）で <code>route</code> の要素を地点名の列挙型に制限し、存在しない地点を出力できないようにした。LLM が使えない場合は、文中の色名を拾う簡易的な変換に切り替わる。</p>
+<p><b>(3) 実行</b>　経由地を 1 つずつゴールとして方策に渡し、到着したら次の経由地へ切り替える。</p>
+
+<h2>4. 結果</h2>
+<div class="two">
+  <figure><img src="g0.jpg"><figcaption>学習前：その場でもがくだけ</figcaption></figure>
+  <figure><img src="g3.jpg"><figcaption>700 万ステップ：赤い柱に着いてホームへ折り返す</figcaption></figure>
+</div>
+<figure><img src="eval.png" style="max-width:78%"><figcaption>図: 学習ステップごとのゴール到達率（4〜6 m 先のゴール・30 秒以内・各 30 回）</figcaption></figure>
+
+<p>学習開始から 200 万ステップほどで到達率が 97% に達した。それ以降は頭打ちになり、終盤（1,500 万ステップ）ではかえって成績が下がった。そこで、各チェックポイントを 100 回ずつ評価し直して採用モデルを決めた。</p>
+<table>
+  <tr><th>モデル</th><th>到達率</th><th>平均到達時間</th><th>転倒率</th></tr>
+  <tr><td>300 万ステップ</td><td class="n">99%</td><td class="n">3.60 秒</td><td class="n">0%</td></tr>
+  <tr><td>600 万ステップ</td><td class="n">99%</td><td class="n">2.99 秒</td><td class="n">1%</td></tr>
+  <tr><td><b>700 万ステップ（採用）</b></td><td class="n"><b>99%</b></td><td class="n"><b>2.87 秒</b></td><td class="n"><b>0%</b></td></tr>
+  <tr><td>1,100 万ステップ</td><td class="n">96%</td><td class="n">3.07 秒</td><td class="n">2%</td></tr>
+  <tr><td>1,500 万ステップ（最終）</td><td class="n">93%</td><td class="n">3.19 秒</td><td class="n">3%</td></tr>
+</table>
+
+<p class="pb"><b>日本語指示での実行</b>（LLM の変換結果と、同じ経由地リストを初期姿勢の乱数を変えて 20 回ずつ実行した成功率）</p>
+<table>
+  <tr><th>指示</th><th>LLM の出力（route）</th><th>成功率</th><th>転倒</th><th>平均所要時間</th></tr>
+  <tr><td>赤い柱に寄ってから青い柱へ行き、最後はホームに戻って</td><td>赤 → 青 → ホーム</td><td class="n">80%</td><td class="n">15%</td><td class="n">13.6 秒</td></tr>
+  <tr><td>黄色い柱に荷物を届けたら帰ってきて</td><td>黄 → ホーム</td><td class="n">95%</td><td class="n">5%</td><td class="n">9.3 秒</td></tr>
+  <tr><td>全部の柱を一周してから戻ってきて</td><td>赤 → 青 → 緑 → 黄 → ホーム</td><td class="n">85%</td><td class="n">5%</td><td class="n">25.2 秒</td></tr>
+  <tr><td>緑の柱の様子を見てきて。そのあと赤い柱にも寄ってね</td><td>緑 → 赤</td><td colspan="3">（LLM 変換のみ確認）</td></tr>
+</table>
+<p>LLM は「帰って」をホームと解釈し、「全部の柱を一周」を順番付きの経由地リストに展開できた。動画のデモは、3 経路とも成功した乱数シード 1 の試行を等速で収録している。</p>
+<figure><img src="demo1.jpg" style="max-width:88%"><figcaption>デモ画面：指示文・LLM の計画（実行中の経由地はオレンジ、到着済みは緑）・俯瞰マップ（軌跡）</figcaption></figure>
+
+<h2>5. 工夫した点</h2>
+<ul>
+  <li><b>言葉と身体の役割分担</b>：LLM には経由地の列を出させるだけにして、関節の動かし方には関わらせない。歩行方策は「ゴールまで歩く」ことだけを学ぶので、新しい指示や地点の組み合わせにも学習し直さずに対応できる。</li>
+  <li><b>ゴールを胴体から見た向きで与える</b>：ゴール方向を胴体座標系に変換して観測に加え、「自分から見て右前にゴールがある」と直接分かるようにした。</li>
+  <li><b>到着したらゴールを出し直す</b>：1 エピソードに何度もゴールを出すため、「止まる・曲がる・また歩く」を集中的に経験できる。学習中は 5 m 以内のゴールしか出さなかったが、10 m を超える区間でも到達できた。</li>
+  <li><b>LLM 出力の型を制限</b>：JSON Schema の列挙型で、存在しない地点や不正な形式が実行系に渡らないようにした。</li>
+  <li><b>評価に基づくモデル選択</b>：最後のモデルが最良とは限らないため、チェックポイントを 100 回ずつ評価し、到達率・速さ・転倒率がそろって良いものを採用した。</li>
+  <li><b>見せ方</b>：指示・計画・進行状況・軌跡を 1 画面に重ねて表示し、「言葉 → 計画 → 動作」の対応が一目で分かるようにした。</li>
+</ul>
+
+<h2>6. 課題と考察</h2>
+<ul>
+  <li><b>失敗の内訳</b>：3 経路 × 20 回の計 60 回のうち、失敗は 8 回だった。5 回は歩いている途中での転倒（1 回は出発直後）。残り 3 回は転ばないまま次の地点に進めず時間切れになったもので、うち 1 回はその場でほとんど動かなくなり、1 回は目標から 3〜4 m の範囲をうろうろし続けた。転倒には、胴体の傾きへのペナルティや、学習時の初期姿勢・外乱のランダム化が有効と考えられる。止まってしまう失敗は、方策だけでなく上位側に「一定時間近づけなければ別の方向へ少し歩いてからやり直す」といった回復動作を入れることで補える。</li>
+  <li><b>学習終盤の性能低下</b>：700 万ステップ以降は到達率がわずかに下がった。報酬が速さを重視するので、無理に速く歩いて姿勢が不安定になった可能性がある。</li>
+  <li><b>LLM の応答時間</b>：4 GB の GPU で 4B 級のモデルを動かすため、1 回の変換に数十秒〜1 分半かかった。実用には小型モデルへの特化（ファインチューニング）や、よく使う指示のキャッシュが必要。</li>
+  <li><b>今後</b>：障害物のある環境での経路計画、カメラ画像からの地点認識（VLM）、実機の四足ロボットへの sim-to-real。</li>
+</ul>
+
+<h2>7. 実行方法</h2>
+<p>コード一式は GitHub リポジトリに置いた（README 参照）。主なファイル：<code>goal_ant.py</code>（環境）、<code>train_goal.py</code>（学習）、<code>planner.py</code>（LLM）、<code>demo.py</code>（指示の実行と録画）、<code>evaluate.py</code>（評価）、<code>make_video.py</code>（動画の作成）。<br>
+例：<code>python demo.py --text "黄色い柱に荷物を届けたら帰ってきて"</code></p>
+<p>使用ツール：MuJoCo 3.12 / Gymnasium 1.3（Ant-v5）/ Stable-Baselines3 2.9（PPO）/ Ollama（gemma4:e4b）/ Python 3.12。動画は等速（倍速なし）。</p>
+
+</body>
+</html>
