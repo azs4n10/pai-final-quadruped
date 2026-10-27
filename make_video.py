@@ -49,8 +49,17 @@ def render_clips(force=False):
     for name, text, speed in DEMOS:
         out = os.path.join(CLIPS, f"{name}.mp4")
         if force or not os.path.exists(out):
-            subprocess.run([py, os.path.join(HERE, "demo.py"), "--text", text, "--speed", str(speed),
-                            "--seed", "1", "--out", out], check=True)
+            cmd = [py, os.path.join(HERE, "demo.py"), "--text", text, "--speed", str(speed), "--seed", "1", "--out", out]
+            log_path = os.path.splitext(out)[0] + ".json"
+            prev = json.load(open(log_path, encoding="utf-8")) if os.path.exists(log_path) else None
+            if prev:  # LLM の計画は前回の結果を使い回す（温度 0 なので同じ出力）
+                cmd += ["--route", ",".join(prev["route"]), "--reply", prev["reply"]]
+            subprocess.run(cmd, check=True)
+            if prev:
+                log = json.load(open(log_path, encoding="utf-8"))
+                log["planner"] = prev["planner"]
+                with open(log_path, "w", encoding="utf-8") as f:
+                    json.dump(log, f, ensure_ascii=False, indent=1)
 
 
 def card(name, seconds, *a, frame=None, **kw):

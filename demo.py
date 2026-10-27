@@ -93,50 +93,44 @@ def compose(frame, instruction, reply, route, leg, visited, trail, t, label, spe
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
 
-    y = 40
+    # 文字はすべて画面下端の帯にまとめ、ロボットと柱が映る上〜中央を空けておく
+    foot = f"経過 {t:5.1f} 秒" + (f"   ▶▶ {speed}倍速" if speed > 1 else "")
     if instruction:
-        panel(d, (40, y, 1300, y + 170))
-        d.text((70, y + 22), "指示（日本語）", font=font(30, "bold"), fill=(255, 175, 70))
-        d.text((70, y + 70), f"「{instruction}」", font=font(40), fill=(255, 255, 255))
-        y += 190
-    if route and instruction:
-        panel(d, (40, y, 1300, y + 160))
-        d.text((70, y + 20), "LLM の計画（gemma4 / ローカル）", font=font(30, "bold"), fill=(120, 200, 255))
-        x = 70
+        top = H - 200
+        panel(d, (40, top, W - 40, H - 30), alpha=190)
+        y1, y2 = top + 52, top + 128
+        d.text((70, y1), "指示", font=font(28, "bold"), fill=(255, 175, 70), anchor="lm")
+        d.text((150, y1), f"「{instruction}」", font=font(38), fill=(255, 255, 255), anchor="lm")
+        d.text((70, y2), "LLM", font=font(28, "bold"), fill=(120, 200, 255), anchor="lm")
+        x = 150
         for i, k in enumerate(route):
             txt = LANDMARK_JA[k]
             done = i < len(visited)
             cur = i == leg and not done
             fill = (255, 140, 0, 255) if cur else ((90, 200, 120, 255) if done else (70, 76, 88, 255))
-            tw = d.textlength(txt, font=font(34, "bold"))
-            d.rounded_rectangle((x, y + 72, x + tw + 36, y + 130), radius=14, fill=fill)
-            d.text((x + 18, y + 101), txt, font=font(34, "bold"), fill=(255, 255, 255), anchor="lm")
-            x += tw + 36
+            tw = d.textlength(txt, font=font(30, "bold"))
+            d.rounded_rectangle((x, y2 - 26, x + tw + 30, y2 + 26), radius=12, fill=fill)
+            d.text((x + 15, y2), txt, font=font(30, "bold"), fill=(255, 255, 255), anchor="lm")
+            x += tw + 30
             if i < len(route) - 1:
-                d.text((x + 12, y + 101), "→", font=font(34, "bold"), fill=(200, 200, 200), anchor="lm")
-                x += 56
-    if label:
-        panel(d, (40, y, 40 + d.textlength(label, font=font(56, "bold")) + 60, y + 100))
-        d.text((70, y + 50), label, font=font(56, "bold"), fill=(255, 255, 255), anchor="lm")
+                d.text((x + 10, y2), "→", font=font(30, "bold"), fill=(200, 200, 200), anchor="lm")
+                x += 48
+        d.text((W - 70, y1), foot, font=font(32, "bold"), fill=(255, 255, 255), anchor="rm")
+        if reply:
+            d.text((W - 70, y2), reply, font=font(28), fill=(200, 210, 222), anchor="rm")
+    else:
+        panel(d, (40, H - 120, W - 40, H - 30), alpha=190)
+        d.text((70, H - 75), label, font=font(44, "bold"), fill=(255, 255, 255), anchor="lm")
+        d.text((W - 70, H - 75), foot, font=font(32, "bold"), fill=(255, 255, 255), anchor="rm")
 
-    mm = minimap(420, trail, route[min(leg, len(route) - 1)] if route else None, visited=visited)
-    layer.alpha_composite(mm, (W - 460, 40))
+    mm = minimap(330, trail, route[min(leg, len(route) - 1)] if route else None, visited=visited)
+    layer.alpha_composite(mm, (W - 370, 40))
 
-    foot = f"経過 {t:5.1f} 秒" + (f"   ▶▶ {speed}倍速" if speed > 1 else "")
-    panel(d, (40, H - 110, 40 + d.textlength(foot, font=font(40, "bold")) + 60, H - 30))
-    d.text((70, H - 70), foot, font=font(40, "bold"), fill=(255, 255, 255), anchor="lm")
-
-    if reply and not flash:
-        tw = d.textlength(reply, font=font(36))
-        panel(d, (W - 80 - tw, H - 110, W - 40, H - 30))
-        d.text((W - 60 - tw, H - 70), reply, font=font(36), fill=(220, 230, 240), anchor="lm")
-    if flash:
-        msg = flash[0]
-        tw = d.textlength(msg, font=font(80, "bold"))
-        panel(d, (W / 2 - tw / 2 - 50, H / 2 - 90, W / 2 + tw / 2 + 50, H / 2 + 70), alpha=200, radius=30)
-        d.text((W / 2, H / 2 - 10), msg, font=font(80, "bold"), fill=(120, 230, 140), anchor="mm")
-    if fell:
-        d.text((W / 2, H / 2), "転倒", font=font(90, "bold"), fill=(255, 90, 90), anchor="mm")
+    msg, color = (("転倒", (255, 90, 90)) if fell else (flash[0], (120, 230, 140)) if flash else (None, None))
+    if msg:
+        tw = d.textlength(msg, font=font(64, "bold"))
+        panel(d, (W / 2 - tw / 2 - 40, 40, W / 2 + tw / 2 + 40, 150), alpha=200, radius=26)
+        d.text((W / 2, 95), msg, font=font(64, "bold"), fill=color, anchor="mm")
 
     img.alpha_composite(layer)
     return np.asarray(img.convert("RGB"))
@@ -147,6 +141,7 @@ def main():
     p.add_argument("--text", default="", help="日本語の指示（LLM で経由地に変換）")
     p.add_argument("--route", default="", help="経由地をカンマ区切りで直接指定（例: red,blue,home）")
     p.add_argument("--model", default=os.path.join(HERE, "models", "final_model.zip"))
+    p.add_argument("--reply", default="", help="--text と --route を両方渡したときに表示する LLM の返答")
     p.add_argument("--label", default="")
     p.add_argument("--seconds", type=float, default=None, help="打ち切り秒数")
     p.add_argument("--speed", type=int, default=1)
@@ -154,8 +149,11 @@ def main():
     p.add_argument("--out", default=os.path.join(HERE, "runs", "demo.mp4"))
     args = p.parse_args()
 
-    reply, source = "", "manual"
-    if args.text:
+    reply, source = args.reply, "manual"
+    if args.text and args.route:  # 計画済み（LLM を呼ばずに再録画）
+        route = [r for r in args.route.split(",") if r]
+        source = "cached"
+    elif args.text:
         res = plan(args.text)
         route, reply, source = res["route"], res["reply"], res["source"]
     else:
