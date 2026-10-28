@@ -28,6 +28,7 @@ DIAGONAL = np.array([0, 1, 1, 0])  # FL・HR が組 0、FR・HL が組 1
 
 WHITE, ORANGE, METAL, DARK = "0.94 0.95 0.97 1", "1 0.5 0.05 1", "0.32 0.35 0.39 1", "0.13 0.14 0.16 1"
 LED = "0.2 0.85 1 1"
+BROWN = "0.72 0.42 0.18 1"
 
 
 def leg_xml(name, x, y):
@@ -52,19 +53,20 @@ def leg_xml(name, x, y):
 
 
 def head_xml():
-    """頭・耳・しっぽ（見た目だけ。胴体に固定、質量 0・接触なし）。"""
+    """頭・耳・しっぽ（見た目だけ。接触判定用の head は透明にし、形は質量 0・接触なしの部品で作る）。"""
     ears = "".join(
-        f'<geom type="box" size="0.01 0.024 0.04" pos="0.31 {s * 0.045} 0.185" euler="{s * -0.35} -0.25 0" class="deco" material="shell" rgba="{DARK}"/>'
+        f'<geom type="ellipsoid" size="0.012 0.022 0.05" pos="0.305 {s * 0.056} 0.125" euler="{s * 0.25} 0.15 0" class="deco" material="shell" rgba="{BROWN}"/>'
         for s in (1, -1)
     )
-    eyes = "".join(f'<geom type="ellipsoid" size="0.008 0.018 0.012" pos="0.4 {s * 0.028} 0.135" class="deco" rgba="{LED}"/>' for s in (1, -1))
+    eyes = "".join(f'<geom type="sphere" size="0.011" pos="0.372 {s * 0.032} 0.158" class="deco" rgba="{LED}"/>' for s in (1, -1))
     return f"""
       <geom type="capsule" fromto="0.24 0 0.04 0.3 0 0.1" size="0.035" class="deco" material="metal" rgba="{DARK}"/>
-      <geom name="head" type="ellipsoid" size="0.08 0.062 0.058" pos="0.33 0 0.13" mass="0.5" material="shell" rgba="{WHITE}"/>
-      <geom type="ellipsoid" size="0.055 0.04 0.032" pos="0.39 0 0.105" class="deco" material="shell" rgba="{WHITE}"/>
-      <geom type="ellipsoid" size="0.012 0.052 0.02" pos="0.392 0 0.135" class="deco" material="metal" rgba="0.05 0.05 0.07 1"/>
+      <geom type="cylinder" fromto="0.272 0 0.067 0.287 0 0.082" size="0.042" class="deco" material="shell" rgba="{ORANGE}"/>
+      <geom name="head" type="ellipsoid" size="0.08 0.062 0.058" pos="0.33 0 0.13" mass="0.5" rgba="0 0 0 0"/>
+      <geom type="ellipsoid" size="0.068 0.052 0.052" pos="0.32 0 0.14" class="deco" material="shell" rgba="{WHITE}"/>
+      <geom type="capsule" fromto="0.35 0 0.118 0.42 0 0.11" size="0.032" class="deco" material="shell" rgba="{WHITE}"/>
+      <geom type="sphere" size="0.014" pos="0.452 0 0.116" class="deco" material="metal" rgba="{DARK}"/>
       {eyes}
-      <geom type="sphere" size="0.016" pos="0.443 0 0.11" class="deco" material="metal" rgba="{DARK}"/>
       {ears}
       <geom type="capsule" fromto="-0.27 0 0.04 -0.36 0 0.13" size="0.014" class="deco" material="metal" rgba="{DARK}"/>
       <geom type="sphere" size="0.02" pos="-0.365 0 0.135" class="deco" material="shell" rgba="{ORANGE}"/>"""

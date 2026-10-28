@@ -1,5 +1,5 @@
 """
-提出動画を組み立てる：OP → タイトル → 仕組み → 学習の成長 → 指示デモ×3 → まとめ → ED
+提出動画を組み立てる：OP → タイトル → しくみ → 学習の成長 → 指示デモ×3 → まとめ → ED
 
   python make_video.py --op path/to/OP.mp4 --ed path/to/ED.mp4 --slide path/to/slide.jpg
 """
@@ -11,9 +11,8 @@ import sys
 
 import imageio.v2 as imageio
 import imageio_ffmpeg
-import numpy as np
 
-from overlay import compare_card, slide_title, title_card
+from overlay import slide_title, title_card
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROBOT = "dog"  # 提出動画に使うロボット（ant / dog）
@@ -85,55 +84,6 @@ def card(name, seconds, *a, frame=None, **kw):
     return out
 
 
-COMPARE_SECONDS = 8
-
-
-def compare_clip():
-    """犬型の旧版（速さだけを求めた歩き方）と改良版を、同じゴールへ向かう 8 秒で左右に並べる。"""
-    py = sys.executable
-    sides = []
-    for robot, model in [("dog_v1", os.path.join(HERE, "models", "dog_v1_model.zip")), ("dog", model_path(None))]:
-        out = os.path.join(CLIPS, f"compare_{robot}.mp4")
-        if not os.path.exists(out):
-            subprocess.run([py, os.path.join(HERE, "demo.py"), "--robot", robot, "--route", "yellow,home", "--model", model,
-                            "--seed", str(DEMO_SEED), "--seconds", str(COMPARE_SECONDS), "--out", out], check=True)
-        sides.append(out)
-    left, right = sides
-    bg = os.path.join(CLIPS, "compare_bg.png")
-    imageio.imwrite(bg, compare_card(SIZE, "歩き方の改良", "同じゴール（黄色い柱）へ向かう最初の8秒（等速）",
-                                     ["旧版：速さだけを求めて、脚を広げた小走り", "改良版：トロットのリズムで、犬らしく歩く"]))
-    out = os.path.join(CLIPS, "compare.mp4")
-    lt = rt = COMPARE_SECONDS
-    ff = imageio_ffmpeg.get_ffmpeg_exe()
-    subprocess.run([ff, "-y", "-loglevel", "error", "-loop", "1", "-i", bg, "-i", left, "-i", right, "-filter_complex",
-                    "[1:v]scale=920:-2[a];[2:v]scale=920:-2[b];[0:v][a]overlay=40:300:eof_action=repeat[t];"
-                    "[t][b]overlay=960:300:eof_action=repeat,fps=30,format=yuv420p[out]",
-                    "-map", "[out]", "-t", f"{max(lt, rt) + 1.5:.2f}", "-c:v", "libx264", "-crf", "18", out], check=True)
-    return out
-
-
-def evolution_card():
-    """作り直しの経緯：Ant → 犬型（旧版）→ 犬型（改良版）の外観を並べる（plot_compare.py の robots.jpg）。"""
-    from PIL import Image, ImageDraw
-
-    from overlay import font
-
-    img = Image.new("RGB", SIZE, (14, 17, 22))
-    d = ImageDraw.Draw(img)
-    d.rectangle((0, 0, 14, SIZE[1]), fill=(255, 140, 0))
-    d.text((80, 90), "ロボットの作り直し", font=font(64, "bold"), fill=(255, 255, 255))
-    d.text((84, 190), "定番の Ant から、犬型を自作。歩き方も犬らしくなるよう報酬を設計し直した", font=font(36), fill=(255, 175, 70))
-    tiles = Image.open(os.path.join(HERE, "report", "robots.jpg"))
-    tw = (SIZE[0] - 160) // 3
-    tiles = tiles.resize((tw * 3, int(tiles.height * tw * 3 / tiles.width)))
-    img.paste(tiles, (80, 320))
-    labels = ["① Ant（8関節・クモ型）", "② 犬型・旧版（12関節）\n速いが脚を広げた小走り", "③ 犬型・改良版（12関節）\nトロットで歩く（採用）"]
-    for i, label in enumerate(labels):
-        d.multiline_text((80 + tw * i + tw // 2, 330 + tiles.height), label, font=font(36, "bold"),
-                         fill=(220, 225, 232), anchor="ma", align="center", spacing=10)
-    return np.asarray(img)
-
-
 def summary_lines():
     lines = []
     ev_path = os.path.join(RUN, "eval.json")
@@ -154,8 +104,8 @@ def summary_lines():
     gait = os.path.join(RUN, "gait_compare.json")
     if os.path.exists(gait):
         g = json.load(open(gait))
-        lines.append(f"歩き方（旧版→改良版）：速さ {g['dog_v1']['speed']:.1f}→{g['dog']['speed']:.2f} m/秒、"
-                     f"対角の脚が揃う割合 {g['dog_v1']['diag']*100:.0f}%→{g['dog']['diag']*100:.0f}%")
+        lines.append(f"歩き方：対角の脚をそろえて出すトロット（平均 {g['dog']['speed']:.2f} m/秒、"
+                     f"対角の脚の接地がそろう割合 {g['dog']['diag']*100:.0f}%）")
     lines += [
               "LLM はローカル実行（gemma4 / Ollama）。外部 API なしで動作",
               "今後：障害物回避、転倒からの起き上がり、実機の四足ロボットへの sim-to-real"]
@@ -186,12 +136,8 @@ def main():
         "   報酬：目標の速さ（0.8 m/秒）でゴールへ ＋ 到着ボーナス ＋ トロットのリズム",
         "           − 胴体の傾き・横歩き・脚の開き・急な動き",
     ]))
-    if ROBOT == "dog":
-        parts.append(card("evolution", 5, frame=evolution_card()))
     parts.append(card("growth", 3, "学習による成長", "同じゴール（赤い柱 → ホーム）を目指す様子を、学習段階ごとに6秒ずつ比較"))
     parts += [os.path.join(CLIPS, f"growth{i}.mp4") for i in range(len(GROWTH))]
-    if ROBOT == "dog":
-        parts.append(compare_clip())
     parts.append(card("demo", 3, "日本語で指示してみる", "指示 → LLM が経由地を計画 → 歩いて順に回る（3本目は2倍速）"))
     parts += [os.path.join(CLIPS, f"{name}.mp4") for name, _, _ in DEMOS]
     parts.append(card("summary", 8, "まとめ", "", summary_lines()))
