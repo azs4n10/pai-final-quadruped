@@ -123,7 +123,7 @@ def main():
 
     render_clips(args.force)
     parts = [args.op]
-    title, sub = "ことばで動く四足配送ロボット", "ローカルLLM × 強化学習（PPO）で「指示どおりに歩く」"
+    title, sub = "日本語で指示できる四足歩行ロボット", "ローカルLLM × 強化学習（PPO）で「指示どおりに歩く」"
     if args.slide:
         parts.append(card("title", 4, frame=slide_title(args.slide, title, sub)))
     else:
