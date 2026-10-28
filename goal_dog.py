@@ -2,7 +2,7 @@
 犬型 4 脚ロボットの目標到達環境（GoalDog）
 
 GoalAnt（Ant ベース）と同じゴール・ランドマークの考え方で、体と歩き方を犬型にしたもの。
-- 体：胴体の下に脚が伸びる犬型（各脚 3 関節：外転・股・膝、計 12 関節）。頭・耳・しっぽは見た目だけ（質量 0・接触なし）
+- 体：胴体の下に脚が伸びる犬型（各脚 3 関節：外転・股・膝、計 12 関節）。前部のセンサーユニットなどの外装は見た目だけ（質量 0・接触なし）
 - 制御：関節は位置制御（PD）。行動は「立ち姿勢からの関節角のずれ」
 - 歩き方：四足ロボットの強化学習で標準的な報酬の組み方（速度追従・姿勢・なめらかさ）に、
   対角の脚を揃えて出すトロットのリズム（歩行クロック）を加え、犬らしい歩き方にする
@@ -28,7 +28,6 @@ DIAGONAL = np.array([0, 1, 1, 0])  # FL・HR が組 0、FR・HL が組 1
 
 WHITE, ORANGE, METAL, DARK = "0.94 0.95 0.97 1", "1 0.5 0.05 1", "0.32 0.35 0.39 1", "0.13 0.14 0.16 1"
 LED = "0.2 0.85 1 1"
-BROWN = "0.72 0.42 0.18 1"
 
 
 def leg_xml(name, x, y):
@@ -53,23 +52,17 @@ def leg_xml(name, x, y):
 
 
 def head_xml():
-    """頭・耳・しっぽ（見た目だけ。接触判定用の head は透明にし、形は質量 0・接触なしの部品で作る）。"""
-    ears = "".join(
-        f'<geom type="ellipsoid" size="0.012 0.022 0.05" pos="0.305 {s * 0.056} 0.125" euler="{s * 0.25} 0.15 0" class="deco" material="shell" rgba="{BROWN}"/>'
+    """前部のセンサーユニット（見た目だけ。接触判定用の head は透明にし、形は質量 0・接触なしの部品で作る）。"""
+    lenses = "".join(
+        f'<geom type="cylinder" size="0.016 0.004" pos="0.358 {s * 0.035} 0.035" euler="0 1.5708 0" class="deco" rgba="{LED}"/>'
         for s in (1, -1)
     )
-    eyes = "".join(f'<geom type="sphere" size="0.011" pos="0.372 {s * 0.032} 0.158" class="deco" rgba="{LED}"/>' for s in (1, -1))
     return f"""
-      <geom type="capsule" fromto="0.24 0 0.04 0.3 0 0.1" size="0.035" class="deco" material="metal" rgba="{DARK}"/>
-      <geom type="cylinder" fromto="0.272 0 0.067 0.287 0 0.082" size="0.042" class="deco" material="shell" rgba="{ORANGE}"/>
       <geom name="head" type="ellipsoid" size="0.08 0.062 0.058" pos="0.33 0 0.13" mass="0.5" rgba="0 0 0 0"/>
-      <geom type="ellipsoid" size="0.068 0.052 0.052" pos="0.32 0 0.14" class="deco" material="shell" rgba="{WHITE}"/>
-      <geom type="capsule" fromto="0.35 0 0.118 0.42 0 0.11" size="0.032" class="deco" material="shell" rgba="{WHITE}"/>
-      <geom type="sphere" size="0.014" pos="0.452 0 0.116" class="deco" material="metal" rgba="{DARK}"/>
-      {eyes}
-      {ears}
-      <geom type="capsule" fromto="-0.27 0 0.04 -0.36 0 0.13" size="0.014" class="deco" material="metal" rgba="{DARK}"/>
-      <geom type="sphere" size="0.02" pos="-0.365 0 0.135" class="deco" material="shell" rgba="{ORANGE}"/>"""
+      <geom type="box" size="0.05 0.075 0.05" pos="0.3 0 0.025" class="deco" material="shell" rgba="{WHITE}"/>
+      <geom type="box" size="0.006 0.062 0.032" pos="0.351 0 0.03" class="deco" material="metal" rgba="0.05 0.05 0.07 1"/>
+      {lenses}
+      <geom type="box" size="0.03 0.03 0.012" pos="0.3 0 0.08" class="deco" material="metal" rgba="{DARK}"/>"""
 
 
 def build_xml():
