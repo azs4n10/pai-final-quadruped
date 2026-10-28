@@ -14,16 +14,19 @@ from PIL import Image, ImageDraw
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-from goal_ant import LANDMARK_JA, LANDMARKS, GoalAntEnv
+from goal_ant import LANDMARK_JA, LANDMARKS, GoalAntEnv, yaw_of
 from goal_dog import GoalDogEnv
+from goal_dog_v1 import GoalDogEnv as GoalDogV1Env
 from overlay import font, minimap, panel, route_text
 from planner import plan
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(HERE, "runs", "goal_ant")
-ROBOTS = {"ant": GoalAntEnv, "dog": GoalDogEnv}
-# 追従カメラ（距離, 注視点の高さ, 追従の速さ）
-CAMERA = {"ant": (6.0, 0.4, 0.08), "dog": (3.6, 0.25, 0.25)}
+ROBOTS = {"ant": GoalAntEnv, "dog": GoalDogEnv, "dog_v1": GoalDogV1Env}
+# 追従カメラ（距離, 注視点の高さ, 追従の速さ, 仰角, ロボットの向きに対する方位 or None=固定）
+# 犬型は斜め前から顔と脚の運びが見えるように、向きに合わせて回り込む
+CAMERA = {"ant": (6.0, 0.4, 0.08, -32.0, None), "dog": (2.4, 0.22, 0.3, -16.0, 140.0),
+          "dog_v1": (2.4, 0.22, 0.3, -16.0, 140.0)}
 
 
 class Policy:
@@ -49,12 +52,15 @@ def run(policy, route, *, size=(1920, 1080), seconds_per_leg=40.0, max_seconds=N
     """route を順に歩かせる。返り値はログ（到達・時間など）。"""
     w, h = size
     env = ROBOTS[robot](render_mode="rgb_array" if render else None, width=w, height=h, camera_id=-1)
-    cam_dist, cam_z, cam_gain = CAMERA[robot]
+    cam_dist, cam_z, cam_gain, cam_el, cam_rel = CAMERA[robot]
     next_frame = 0.0
     env.fixed_goal = True
     env.reset(seed=seed)
     viewer = None
     cam_xy = env.xy()
+    cam_az = None
+    pillars = [env.model.geom(f"lm_{k}").id for k in LANDMARKS if k != "home"]
+    pillar_rgba = env.model.geom_rgba[pillars].copy()
 
     trail, visited, events = [env.xy()], [], []
     t, fell, flash = 0.0, False, None
@@ -78,10 +84,24 @@ def run(policy, route, *, size=(1920, 1080), seconds_per_leg=40.0, max_seconds=N
                     env.render()
                     viewer = env.mujoco_renderer._get_viewer("rgb_array")
                 cam_xy = (1 - cam_gain) * cam_xy + cam_gain * info["xy"]
+                if cam_rel is None:
+                    cam_az = 120.0
+                else:
+                    target = np.degrees(yaw_of(env.data.qpos[3:7])) + cam_rel
+                    cam_az = target if cam_az is None else cam_az + 0.06 * ((target - cam_az + 180) % 360 - 180)
                 viewer.cam.lookat[:] = [cam_xy[0], cam_xy[1], cam_z]
                 viewer.cam.distance = cam_dist
-                viewer.cam.azimuth = 120.0
-                viewer.cam.elevation = -32.0
+                viewer.cam.azimuth = cam_az
+                viewer.cam.elevation = cam_el
+                # カメラとロボットの間に入った柱は半透明にする
+                a = np.radians(cam_az)
+                eye = cam_xy - cam_dist * np.cos(np.radians(cam_el)) * np.array([np.cos(a), np.sin(a)])
+                for gid, rgba in zip(pillars, pillar_rgba):
+                    c = env.model.geom_pos[gid][:2]
+                    seg = cam_xy - eye
+                    u = np.clip(np.dot(c - eye, seg) / np.dot(seg, seg), 0, 1)
+                    near = np.linalg.norm(eye + u * seg - c) < 0.45 and u < 0.97
+                    env.model.geom_rgba[gid] = [*rgba[:3], 0.18 if near else rgba[3]]
                 frame = env.render()
                 on_frame(compose(frame, instruction, reply, route, leg, visited, trail, t, label, speed,
                                  flash if flash and t - flash[1] < 1.5 else None, fell))
@@ -169,7 +189,7 @@ def main():
     print(f"[plan] {source}: {route_text(route)}  {reply}", flush=True)
 
     if args.model is None:
-        args.model = os.path.join(HERE, "models", "dog_model.zip" if args.robot == "dog" else "final_model.zip")
+        args.model = os.path.join(HERE, "models", {"ant": "final_model.zip"}.get(args.robot, f"{args.robot}_model.zip"))
     policy = Policy(args.model, vecnorm_for(args.model), args.robot)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     writer = imageio.get_writer(args.out, fps=20, quality=8, macro_block_size=8)

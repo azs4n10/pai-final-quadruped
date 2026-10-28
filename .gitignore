@@ -4,3 +4,4 @@ assets/
 train_goal.log
 report/*.pdf
 train_dog.log
+make_video.log

@@ -3,7 +3,8 @@
 
   python evaluate.py            # runs/goal_ant/eval.json と eval.png を出力
   python evaluate.py --routes   # デモ経路ごとの成功率 runs/goal_ant/route_eval.json
-  --robot dog を付けると犬型（runs/goal_dog/）
+  python evaluate.py --final 7000000   # 採用モデルを 100 回で測り直す runs/goal_ant/eval100.json
+  --robot dog / dog_v1 を付けると犬型（runs/goal_dog/ など）
 評価方法：ランダムな方向・距離 4〜6 m のゴールを 1 つ置き、30 秒以内に半径 0.6 m に入れば成功。
 """
 import glob
@@ -66,12 +67,19 @@ def evaluate_routes(model_path, n=20, robot="ant"):
 
 
 def main():
-    robot = "dog" if "--robot" in sys.argv and sys.argv[sys.argv.index("--robot") + 1] == "dog" else "ant"
+    robot = sys.argv[sys.argv.index("--robot") + 1] if "--robot" in sys.argv else "ant"
     RUN = os.path.join(HERE, "runs", f"goal_{robot}")
+    model = os.path.join(HERE, "models", "final_model.zip" if robot == "ant" else f"{robot}_model.zip")
     if "--routes" in sys.argv:
-        model = os.path.join(HERE, "models", "dog_model.zip" if robot == "dog" else "final_model.zip")
         with open(os.path.join(RUN, "route_eval.json"), "w", encoding="utf-8") as f:
             json.dump(evaluate_routes(model, robot=robot), f, indent=1, ensure_ascii=False)
+        return
+    if "--final" in sys.argv:
+        steps = int(sys.argv[sys.argv.index("--final") + 1])
+        r = evaluate(model, n=100, robot=robot)
+        print(r)
+        with open(os.path.join(RUN, "eval100.json"), "w") as f:
+            json.dump({f"100trials_{steps // 1_000_000}M": r}, f, indent=1)
         return
     models = sorted(glob.glob(os.path.join(RUN, "ckpt", "model_*.zip")))
     steps = [int(os.path.basename(m)[6:15]) for m in models]
