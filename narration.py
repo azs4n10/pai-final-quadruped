@@ -60,3 +60,14 @@ def write_track(events, total, path):
         w.writeframes((track * 32767).astype(np.int16).tobytes())
     with open(path, "wb") as f:
         f.write(buf.getvalue())
+
+
+def write_srt(events, path):
+    """events = [(開始秒, text)] を YouTube などで ON/OFF できる字幕ファイル（SRT）にする。"""
+    def ts(sec):
+        ms = int(round(sec * 1000))
+        return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
+
+    with open(path, "w", encoding="utf-8") as f:
+        for i, (start, text) in enumerate(events, 1):
+            f.write(f"{i}\n{ts(start)} --> {ts(start + seconds(text) + 0.3)}\n{text}\n\n")

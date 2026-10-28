@@ -125,7 +125,7 @@ def duration(path):
 def main():
     from PIL import Image
 
-    from narration import write_track
+    from narration import write_srt, write_track
     from overlay import section_card, summary_card, system_card
 
     p = argparse.ArgumentParser()
@@ -166,6 +166,7 @@ def main():
         t += d
     voice = os.path.join(CLIPS, "voice.wav")
     write_track(events, t, voice)
+    write_srt(events, os.path.splitext(args.out)[0] + ".srt")  # 字幕（YouTube で ON/OFF できる）
 
     ff = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [ff, "-y", "-loglevel", "error"]
