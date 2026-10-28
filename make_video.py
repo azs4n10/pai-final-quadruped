@@ -1,5 +1,5 @@
 """
-提出動画を組み立てる：OP → タイトル → しくみ → 学習の成長 → 指示デモ×3 → まとめ → ED
+提出動画を組み立てる：OP → タイトル → しくみ → 学習の成長 → 指示デモ×3 → まとめ → ED（ナレーション付き）
 
   python make_video.py --op path/to/OP.mp4 --ed path/to/ED.mp4 --slide path/to/slide.jpg
 """
@@ -12,7 +12,7 @@ import sys
 import imageio.v2 as imageio
 import imageio_ffmpeg
 
-from overlay import slide_title, title_card
+from overlay import slide_title
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROBOT = "dog"  # 提出動画に使うロボット（ant / dog）
@@ -73,46 +73,61 @@ def render_clips(force=False):
                     json.dump(log, f, ensure_ascii=False, indent=1)
 
 
-def card(name, seconds, *a, frame=None, **kw):
+# ナレーション（VOICEVOX:ずんだもん）。部品ごとに (開始秒, 文)
+VOICE = {
+    "title": [(0.4, "日本語で指示できる、四足歩行ロボットを作ったのだ！")],
+    "system": [(0.5, "日本語の指示を、パソコンの中で動くLLMが、立ち寄る場所のリストに変えるのだ。"),
+               (6.6, "そのリストどおりに、強化学習で歩き方を覚えたロボットが、ひとつずつゴールを目指すのだ。")],
+    "growth": [(0.3, "まずは、学習で歩き方が上達していく様子を見るのだ。")],
+    "growth0": [(0.3, "学習前は、足を動かしても前に進めないのだ。")],
+    "growth1": [(0.3, "百万ステップでは進めるようになったけど、まだよく転ぶのだ。")],
+    "growth2": [(0.3, "五百万ステップで、対角の脚をそろえて歩けるようになったのだ。")],
+    "growth3": [(0.3, "これが採用したモデルなのだ。まっすぐゴールへ向かうのだ。")],
+    "demo": [(0.3, "それでは、日本語で指示してみるのだ。")],
+    "demo1": [(0.6, "赤い柱に寄ってから青い柱、最後にホーム。LLMが、三つの場所の順番に直したのだ。"),
+              (14.0, "場所に着くたびに、次のゴールへ切り替えて歩いていくのだ。")],
+    "demo2": [(0.6, "荷物を届けて帰ってきて、という言い方でも、黄色い柱とホームのことだと分かったのだ。")],
+    "demo3": [(0.6, "全部の柱を一周、という指示も、五つの場所の順番になったのだ。ここからは2倍速なのだ。"),
+              (14.0, "転ばずに、順番どおりに柱を回っていくのだ。")],
+    "summary": [(0.5, "ゴールへの到達は百回中百回、指示どおりの経路も、六十回すべて成功したのだ。"),
+                (7.2, "LLMはパソコンの中だけで動くから、外部のサービスにデータを送らなくていいのだ。")],
+}
+
+
+def card(name, seconds, frame):
+    """静止画の部品。ナレーションが収まる長さに伸ばす。"""
+    from narration import seconds as voice_seconds
+
+    need = max((t + voice_seconds(text) + 0.8 for t, text in VOICE.get(name, [])), default=0)
     out = os.path.join(CLIPS, f"card_{name}.mp4")
-    if frame is None:
-        frame = title_card(SIZE, *a, **kw)
     w = imageio.get_writer(out, fps=FPS, quality=8, macro_block_size=8)
-    for _ in range(int(seconds * FPS)):
+    for _ in range(int(max(seconds, need) * FPS)):
         w.append_data(frame)
     w.close()
     return out
 
 
-def summary_lines():
-    lines = []
-    ev_path = os.path.join(RUN, "eval.json")
-    if os.path.exists(ev_path):
-        ev = json.load(open(ev_path))
-        last = ev[str(ADOPTED)]  # 採用モデル
-        first = ev[min(ev, key=int)]
-        e100 = os.path.join(RUN, "eval100.json")  # 採用モデルは 100 回で測り直した値を使う
-        if os.path.exists(e100):
-            last = json.load(open(e100))[f"100trials_{ADOPTED // 1_000_000}M"]
-        lines.append(f"ゴール到達率（4〜6 m 先・30 秒以内）：学習前 {first['success']*100:.0f}% → "
-                     f"学習後（{ADOPTED // 10000}万ステップ） {last['success']*100:.0f}%")
-    rt_path = os.path.join(RUN, "route_eval.json")
-    if os.path.exists(rt_path):
-        rt = json.load(open(rt_path, encoding="utf-8"))
-        rates = " / ".join(f"{v['success']*100:.0f}%" for v in rt.values())
-        lines.append(f"デモ3経路の成功率（各20回）：{rates}")
-    gait = os.path.join(RUN, "gait_compare.json")
-    if os.path.exists(gait):
-        g = json.load(open(gait))
-        lines.append(f"歩き方：対角の脚をそろえて出すトロット（平均 {g['dog']['speed']:.2f} m/秒、"
-                     f"対角の脚の接地がそろう割合 {g['dog']['diag']*100:.0f}%）")
-    lines += [
-              "LLM はローカル実行（gemma4 / Ollama）。外部 API なしで動作",
-              "今後：障害物回避、転倒からの起き上がり、実機の四足ロボットへの sim-to-real"]
-    return lines
+def summary_stats():
+    e100 = json.load(open(os.path.join(RUN, "eval100.json")))[f"100trials_{ADOPTED // 1_000_000}M"]
+    rt = json.load(open(os.path.join(RUN, "route_eval.json"), encoding="utf-8"))
+    ok = sum(round(v["success"] * 20) for v in rt.values())
+    g = json.load(open(os.path.join(RUN, "gait_compare.json")))["dog"]
+    return [(f"{e100['success'] * 100:.0f}%", "ゴール到達\n（4〜6 m 先・100回）"),
+            (f"{ok}/{len(rt) * 20}", "指示どおりの経路\n（3経路×20回）"),
+            (f"{g['speed']:.2f}", f"m/秒のトロット歩行\n（対角の脚がそろう {g['diag'] * 100:.0f}%）"),
+            ("0 件", "外部 API の利用\n（LLM は PC 内で動作）")]
+
+
+def duration(path):
+    return imageio_ffmpeg.count_frames_and_secs(path)[1]
 
 
 def main():
+    from PIL import Image
+
+    from narration import write_track
+    from overlay import section_card, summary_card, system_card
+
     p = argparse.ArgumentParser()
     p.add_argument("--op", required=True)
     p.add_argument("--ed", required=True)
@@ -122,39 +137,51 @@ def main():
     args = p.parse_args()
 
     render_clips(args.force)
-    parts = [args.op]
     title, sub = "日本語で指示できる四足歩行ロボット", "ローカルLLM × 強化学習（PPO）で「指示どおりに歩く」"
-    if args.slide:
-        parts.append(card("title", 4, frame=slide_title(args.slide, title, sub)))
-    else:
-        parts.append(card("title", 4, title, sub))
-    parts.append(card("system", 8, "しくみ", "", [
-        "① 日本語の指示を、ローカルLLM（gemma4）が経由地のリストに変換",
-        "② 強化学習で身につけた「ゴールまで歩く」方策が、経由地を1つずつ目指す",
-        "③ 物理シミュレータ MuJoCo 上に自作した犬型ロボット（12関節）で実行",
-        "   観測：姿勢・関節の角度と速度 ＋ ゴールの方向と距離（胴体から見た向き）",
-        "   報酬：目標の速さ（0.8 m/秒）でゴールへ ＋ 到着ボーナス ＋ トロットのリズム",
-        "           − 胴体の傾き・横歩き・脚の開き・急な動き",
-    ]))
-    parts.append(card("growth", 3, "学習による成長", "同じゴール（赤い柱 → ホーム）を目指す様子を、学習段階ごとに6秒ずつ比較"))
-    parts += [os.path.join(CLIPS, f"growth{i}.mp4") for i in range(len(GROWTH))]
-    parts.append(card("demo", 3, "日本語で指示してみる", "指示 → LLM が経由地を計画 → 歩いて順に回る（3本目は2倍速）"))
-    parts += [os.path.join(CLIPS, f"{name}.mp4") for name, _, _ in DEMOS]
-    parts.append(card("summary", 8, "まとめ", "", summary_lines()))
-    parts.append(args.ed)
+    robot = Image.open(os.path.join(HERE, "report", "robot.jpg")).crop((120, 60, 860, 560))
+    parts = [("op", args.op),
+             ("title", card("title", 4, slide_title(args.slide, title, sub) if args.slide else section_card(SIZE, title, sub))),
+             ("system", card("system", 8, system_card(SIZE, robot))),
+             ("growth", card("growth", 3, section_card(SIZE, "学習による成長", "同じゴール（赤い柱 → ホーム）を、学習段階ごとに 6 秒ずつ")))]
+    parts += [(f"growth{i}", os.path.join(CLIPS, f"growth{i}.mp4")) for i in range(len(GROWTH))]
+    parts.append(("demo", card("demo", 3, section_card(SIZE, "日本語で指示してみる", "指示 → LLM が経由地を計画 → 順に歩いて回る（3本目は2倍速）"))))
+    parts += [(name, os.path.join(CLIPS, f"{name}.mp4")) for name, _, _ in DEMOS]
+    parts.append(("summary", card("summary", 8, summary_card(SIZE, summary_stats(), [
+        "今後：障害物の回避、転倒からの起き上がり、実機の四足ロボットへの sim-to-real"], "音声：VOICEVOX:ずんだもん"))))
+    parts.append(("ed", args.ed))
+
+    # ナレーションを部品の開始時刻に合わせて 1 本の音声トラックにする
+    from narration import seconds as voice_seconds
+
+    events, t, pads = [], 0.0, []
+    for name, path in parts:
+        d = duration(path)
+        pad = max(6.0 - d, 0.0) if name.startswith("growth") and name != "growth" else 0.0  # 転倒で早く終わった成長記録は最後の画面で止める
+        pads.append(pad)
+        d += pad
+        for off, text in VOICE.get(name, []):
+            if off + voice_seconds(text) > d:
+                print(f"[warn] {name}: ナレーションが映像より長い（{off + voice_seconds(text):.1f}s > {d:.1f}s）")
+            events.append((t + off, text))
+        t += d
+    voice = os.path.join(CLIPS, "voice.wav")
+    write_track(events, t, voice)
 
     ff = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [ff, "-y", "-loglevel", "error"]
-    for prt in parts:
+    for _, prt in parts:
         cmd += ["-i", prt]
+    cmd += ["-i", voice]
+    n = len(parts)
     norm = "".join(
         f"[{i}:v]scale={SIZE[0]}:{SIZE[1]}:force_original_aspect_ratio=decrease,"
-        f"pad={SIZE[0]}:{SIZE[1]}:(ow-iw)/2:(oh-ih)/2,fps={FPS},format=yuv420p,setsar=1[v{i}];"
-        for i in range(len(parts))
+        f"pad={SIZE[0]}:{SIZE[1]}:(ow-iw)/2:(oh-ih)/2,fps={FPS},format=yuv420p,setsar=1"
+        + (f",tpad=stop_mode=clone:stop_duration={pads[i]:.3f}" if pads[i] else "") + f"[v{i}];"
+        for i in range(n)
     )
-    concat = "".join(f"[v{i}]" for i in range(len(parts))) + f"concat=n={len(parts)}:v=1:a=0[out]"
-    cmd += ["-filter_complex", norm + concat, "-map", "[out]", "-c:v", "libx264", "-crf", "20",
-            "-preset", "medium", "-movflags", "+faststart", args.out]
+    concat = "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[out]"
+    cmd += ["-filter_complex", norm + concat, "-map", "[out]", "-map", f"{n}:a", "-c:v", "libx264", "-crf", "20",
+            "-preset", "medium", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", args.out]
     subprocess.run(cmd, check=True)
     probe = subprocess.run([ff, "-i", args.out], capture_output=True, text=True).stderr
     print([ln.strip() for ln in probe.splitlines() if "Duration" in ln], "->", args.out)

@@ -74,21 +74,76 @@ def route_text(route):
     return " → ".join(LANDMARK_JA[k] for k in route)
 
 
-def title_card(size, title, subtitle="", lines=(), bg=(14, 17, 22)):
-    """全面の文字カード。"""
+INK, SUB, KHAKI, ACCENT = (28, 30, 34), (96, 92, 70), (179, 176, 145), (240, 140, 0)
+
+
+def slide_base(size):
+    """講座テンプレートに合わせた白地＋右端のカーキの斜め帯。"""
     w, h = size
-    img = Image.new("RGB", size, bg)
+    img = Image.new("RGB", size, (255, 255, 255))
     d = ImageDraw.Draw(img)
-    d.rectangle((0, 0, 14, h), fill=(255, 140, 0))
-    y = h * 0.30 if lines else h * 0.40
-    d.text((120, y), title, font=font(84, "bold"), fill=(255, 255, 255))
-    y += 120
+    d.polygon([(w - 110, 0), (w, 0), (w, h), (w - 330, h)], fill=KHAKI)
+    d.polygon([(w - 140, 0), (w - 126, 0), (w - 346, h), (w - 360, h)], fill=KHAKI)
+    return img, d
+
+
+def section_card(size, title, subtitle=""):
+    """章の区切り（大きな見出し＋一言）。"""
+    img, d = slide_base(size)
+    d.rectangle((120, 470, 132, 610), fill=ACCENT)
+    d.text((170, 462), title, font=font(84, "bold"), fill=INK)
     if subtitle:
-        d.text((124, y), subtitle, font=font(40), fill=(255, 175, 70))
-        y += 90
-    for line in lines:
-        d.text((124, y), line, font=font(38), fill=(220, 225, 232))
-        y += 64
+        d.text((174, 572), subtitle, font=font(38), fill=SUB)
+    return np.asarray(img)
+
+
+def system_card(size, robot_img):
+    """しくみ：指示 → LLM → 経由地 → 歩行方策 → ロボット の流れ図と、観測・報酬。"""
+    img, d = slide_base(size)
+    d.text((120, 90), "しくみ", font=font(72, "bold"), fill=INK)
+    boxes = [("日本語の指示", "「黄色い柱に荷物を\n届けたら帰ってきて」"), ("ローカル LLM", "gemma4（Ollama）\nPC 内で動作"),
+             ("経由地リスト", "黄色い柱 → ホーム"), ("歩行方策", "強化学習（PPO）\nゴールまで歩く")]
+    x, y, bw, bh = 120, 300, 270, 210
+    for i, (head, body) in enumerate(boxes):
+        d.rounded_rectangle((x, y, x + bw, y + bh), radius=22, fill=(255, 247, 235), outline=ACCENT, width=4)
+        d.text((x + bw / 2, y + 48), head, font=font(36, "bold"), fill=INK, anchor="mm")
+        d.multiline_text((x + bw / 2, y + 128), body, font=font(26), fill=SUB, anchor="mm", align="center", spacing=8)
+        x += bw
+        d.text((x + 30, y + bh / 2), "→", font=font(52, "bold"), fill=ACCENT, anchor="mm")
+        x += 60
+    rob = robot_img.resize((330, int(robot_img.height * 330 / robot_img.width)))
+    img.paste(rob, (x, y + bh // 2 - rob.height // 2))
+    d.text((x + 165, y + bh / 2 + rob.height / 2 + 30), "自作の犬型ロボット（12関節）", font=font(26, "bold"), fill=INK, anchor="mm")
+    rows = [("観測", "胴体の姿勢・速度、12 関節の角度と速度、ゴールの方向と距離、歩行のリズム"),
+            ("報酬", "目標の速さ（0.8 m/秒）でゴールへ ＋ 到着ボーナス ＋ トロットのリズム"),
+            ("", "− 胴体の傾き・横歩き・脚の開き・急な動き"),
+            ("環境", "物理シミュレータ MuJoCo")]
+    y = 680
+    for head, body in rows:
+        if head:
+            d.rounded_rectangle((120, y - 4, 230, y + 46), radius=12, fill=KHAKI)
+            d.text((175, y + 21), head, font=font(28, "bold"), fill=(255, 255, 255), anchor="mm")
+        d.text((260, y + 21), body, font=font(32), fill=INK, anchor="lm")
+        y += 72
+    return np.asarray(img)
+
+
+def summary_card(size, stats, footer=(), credit=""):
+    """まとめ：数字のタイル＋一言。stats は (大きな数字, 説明) の列。"""
+    img, d = slide_base(size)
+    d.text((120, 90), "まとめ", font=font(72, "bold"), fill=INK)
+    tw, th, gap, top = 350, 340, 36, 280
+    for i, (big, label) in enumerate(stats):
+        x = 120 + i * (tw + gap)
+        d.rounded_rectangle((x, top, x + tw, top + th), radius=26, fill=(255, 247, 235), outline=ACCENT, width=4)
+        d.text((x + tw / 2, top + 135), big, font=font(92, "bold"), fill=ACCENT, anchor="mm")
+        d.multiline_text((x + tw / 2, top + 255), label, font=font(30), fill=INK, anchor="mm", align="center", spacing=8)
+    y = 730
+    for line in footer:
+        d.text((120, y), line, font=font(34), fill=INK)
+        y += 62
+    if credit:
+        d.text((120, size[1] - 70), credit, font=font(24), fill=SUB)
     return np.asarray(img)
 
 
@@ -98,16 +153,4 @@ def slide_title(slide_path, title, subtitle):
     d = ImageDraw.Draw(img)
     d.text((88, 700), title, font=font(60, "bold"), fill=(20, 20, 20))
     d.text((92, 790), subtitle, font=font(29), fill=(110, 104, 80))
-    return np.asarray(img)
-
-
-def compare_card(size, title, subtitle, labels, bg=(14, 17, 22)):
-    """左右比較用の背景（上に見出し、映像の下に左右それぞれの説明）。"""
-    img = Image.new("RGB", size, bg)
-    d = ImageDraw.Draw(img)
-    d.rectangle((0, 0, 14, size[1]), fill=(255, 140, 0))
-    d.text((80, 90), title, font=font(64, "bold"), fill=(255, 255, 255))
-    d.text((84, 190), subtitle, font=font(36), fill=(255, 175, 70))
-    for x, label in zip((40, 960), labels):
-        d.text((x + 460, 855), label, font=font(38, "bold"), fill=(220, 225, 232), anchor="ma")
     return np.asarray(img)

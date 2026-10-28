@@ -19,6 +19,7 @@ Physical AI 応用1 最終課題。日本語の指示をローカル LLM が経�
 | `make_video.py` | 提出動画の組み立て |
 | `plot_compare.py` | 説明資料の図（学習曲線・外観） |
 | `overlay.py` | 動画用の文字・ミニマップ描画 |
+| `narration.py` | 動画のナレーション音声（VOICEVOX ENGINE で合成） |
 | `models/` | 採用モデルと観測正規化の統計（`dog_*`：犬型 2,900 万ステップ。`dog_v1_*`・`final_*` は比較用） |
 
 ## セットアップ
@@ -58,4 +59,4 @@ python evaluate.py --robot dog --final 29000000   # 採用モデルを 100 回�
 | 歩き方（30 秒 × 10 回の平均） | 0.75 m/秒、対角の脚の接地がそろう割合 73% |
 
 ## 使用ツール
-MuJoCo 3.12 / Gymnasium 1.3 / Stable-Baselines3 2.9（PPO）/ Ollama（gemma4:e4b）/ Python 3.12
+MuJoCo 3.12 / Gymnasium 1.3 / Stable-Baselines3 2.9（PPO）/ Ollama（gemma4:e4b）/ Python 3.12 / VOICEVOX ENGINE（動画のナレーション。音声：VOICEVOX:ずんだもん）

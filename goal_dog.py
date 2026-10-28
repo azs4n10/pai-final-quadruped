@@ -69,14 +69,16 @@ def build_xml():
     marks = []
     for name, ((x, y), (r, g, b, a)) in LANDMARKS.items():
         if name == "home":
-            marks.append(f'<geom name="lm_{name}" type="cylinder" pos="{x} {y} 0.005" size="0.7 0.005" rgba="{r} {g} {b} 0.8" class="deco"/>')
+            marks.append(f'<geom name="lm_{name}" type="cylinder" pos="{x} {y} 0.005" size="0.7 0.005" rgba="0.32 0.35 0.40 1" class="deco"/>')
+            marks.append(f'<geom type="cylinder" pos="{x} {y} 0.006" size="0.55 0.005" rgba="0.95 0.95 0.95 1" class="deco"/>')
+            marks.append(f'<geom type="cylinder" pos="{x} {y} 0.007" size="0.5 0.005" rgba="0.32 0.35 0.40 1" class="deco"/>')
         else:
             marks.append(f'<geom name="lm_{name}" type="cylinder" pos="{x} {y} 0.75" size="0.18 0.75" rgba="{r} {g} {b} {a}" class="deco"/>')
     actuators = "\n".join(f'<position name="{n}_{j}" joint="{n}_{j}"/>' for n, _, _ in LEGS for j in ("abd", "hip", "knee"))
     xml = f"""<mujoco model="goal_dog">
   <compiler angle="radian" autolimits="true"/>
   <option timestep="0.004" integrator="implicitfast"/>
-  <visual><global offwidth="1920" offheight="1080"/><quality shadowsize="4096"/></visual>
+  <visual><global offwidth="1920" offheight="1080"/><quality shadowsize="4096"/><headlight ambient="0.35 0.35 0.35" diffuse="0.35 0.35 0.35" specular="0.1 0.1 0.1"/><map haze="0.25" fogstart="12" fogend="45"/><rgba haze="0.88 0.93 0.98 1" fog="0.88 0.93 0.98 1"/></visual>
   <default>
     <joint damping="0.8" armature="0.02"/>
     <geom contype="1" conaffinity="0" condim="3" friction="1 0.5 0.5"/>
@@ -84,14 +86,14 @@ def build_xml():
     <default class="deco"><geom contype="0" conaffinity="0" mass="0"/></default>
   </default>
   <asset>
-    <texture builtin="gradient" height="100" rgb1="1 1 1" rgb2="0 0 0" type="skybox" width="100"/>
-    <texture builtin="checker" height="100" name="texplane" rgb1="0.30 0.33 0.37" rgb2="0.40 0.43 0.47" type="2d" width="100"/>
-    <material name="MatPlane" reflectance="0.15" shininess="0.3" specular="0.3" texrepeat="40 40" texture="texplane"/>
+    <texture builtin="gradient" height="512" rgb1="0.45 0.66 0.90" rgb2="0.92 0.95 0.99" type="skybox" width="512"/>
+    <texture builtin="checker" height="512" name="texplane" rgb1="0.80 0.79 0.75" rgb2="0.75 0.74 0.70" mark="edge" markrgb="0.62 0.62 0.60" type="2d" width="512"/>
+    <material name="MatPlane" reflectance="0" shininess="0.2" specular="0.2" texrepeat="40 40" texture="texplane"/>
     <material name="shell" specular="0.5" shininess="0.6"/>
     <material name="metal" specular="0.8" shininess="0.9"/>
   </asset>
   <worldbody>
-    <light cutoff="100" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1"/>
+    <light diffuse="0.75 0.73 0.70" dir="-0.4 -0.3 -1" directional="true" pos="0 0 5" specular=".15 .15 .15" castshadow="true"/>
     <geom name="floor" type="plane" size="40 40 40" material="MatPlane" contype="1" conaffinity="1" condim="3"/>
     <body name="torso" pos="0 0 0.36">
       <freejoint name="root"/>
