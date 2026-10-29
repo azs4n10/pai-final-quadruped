@@ -13,7 +13,7 @@ from goal_ant import LANDMARK_JA, LANDMARKS
 OLLAMA_URL = "http://localhost:11434/api/chat"
 MODEL = "gemma4:e4b"
 
-SYSTEM = """あなたは四足歩行配送ロボットの経路プランナーです。
+SYSTEM = """あなたは四足歩行ロボットの経路プランナーです。
 ユーザーの日本語の指示を読み、ロボットが順に訪れる地点のリストを JSON で返します。
 
 使える地点（キー: 説明, 座標[m]）:
@@ -21,39 +21,40 @@ SYSTEM = """あなたは四足歩行配送ロボットの経路プランナー�
 
 ルール:
 - route には上のキーだけを、訪れる順に並べる。
-- 「戻る」「帰る」はロボットが出発した home を指す。
+- 「戻る」「帰る」はロボットが出発した {home} を指す。
 - 「全部」「一周」などは、指示に順番がなければ近い順に回る。
-- ロボットは home から出発する。最初の地点に home は入れない。
+- ロボットは {home} から出発する。最初の地点に {home} は入れない。
 - reply には、ロボットとして何をするかを日本語で短く（30字以内）書く。
 """
 
-SCHEMA = {
-    "type": "object",
-    "properties": {
-        "route": {"type": "array", "items": {"type": "string", "enum": list(LANDMARKS)}},
-        "reply": {"type": "string"},
-    },
-    "required": ["route", "reply"],
-}
+
+def default_places():
+    """色付きの柱が立つ広場の地点：キー -> (説明, (x, y))。"""
+    return {k: ("出発地点（白い円）" if k == "home" else LANDMARK_JA[k], xy) for k, (xy, _) in LANDMARKS.items()}
 
 
-def _places_text():
-    lines = []
-    for k, ((x, y), _) in LANDMARKS.items():
-        desc = "出発地点（白い円）" if k == "home" else LANDMARK_JA[k]
-        lines.append(f"- {k}: {desc}, ({x:+.0f}, {y:+.0f})")
-    return "\n".join(lines)
+def _places_text(places):
+    return "\n".join(f"- {k}: {desc}, ({x:+.1f}, {y:+.1f})" for k, (desc, (x, y)) in places.items())
 
 
-def plan_with_llm(instruction, model=MODEL, timeout=300):
+def plan_with_llm(instruction, places=None, home="home", model=MODEL, timeout=300):
+    places = places or default_places()
+    schema = {
+        "type": "object",
+        "properties": {
+            "route": {"type": "array", "items": {"type": "string", "enum": list(places)}},
+            "reply": {"type": "string"},
+        },
+        "required": ["route", "reply"],
+    }
     body = {
         "model": model,
         "stream": False,
         "think": False,
-        "format": SCHEMA,
+        "format": schema,
         "options": {"temperature": 0},
         "messages": [
-            {"role": "system", "content": SYSTEM.format(places=_places_text())},
+            {"role": "system", "content": SYSTEM.format(places=_places_text(places), home=home)},
             {"role": "user", "content": instruction},
         ],
     }
@@ -63,7 +64,7 @@ def plan_with_llm(instruction, model=MODEL, timeout=300):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         content = json.loads(r.read())["message"]["content"]
     out = json.loads(content)
-    route = [k for k in out.get("route", []) if k in LANDMARKS]
+    route = [k for k in out.get("route", []) if k in places]
     return {"route": route, "reply": out.get("reply", ""), "source": model}
 
 
@@ -78,9 +79,9 @@ def plan_with_keywords(instruction):
     return {"route": route, "reply": "", "source": "keyword"}
 
 
-def plan(instruction):
+def plan(instruction, places=None, home="home"):
     try:
-        return plan_with_llm(instruction)
+        return plan_with_llm(instruction, places, home)
     except Exception as e:  # Ollama 未起動など
         print(f"[planner] LLM unavailable ({e}); fallback to keywords", file=sys.stderr)
         return plan_with_keywords(instruction)

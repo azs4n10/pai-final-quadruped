@@ -17,16 +17,17 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from goal_ant import LANDMARK_JA, LANDMARKS, GoalAntEnv, yaw_of
 from goal_dog import GoalDogEnv
 from goal_dog_v1 import GoalDogEnv as GoalDogV1Env
+from terrain_dog import TerrainDogEnv
 from overlay import font, minimap, panel, route_text
 from planner import plan
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUN = os.path.join(HERE, "runs", "goal_ant")
-ROBOTS = {"ant": GoalAntEnv, "dog": GoalDogEnv, "dog_v1": GoalDogV1Env}
+ROBOTS = {"ant": GoalAntEnv, "dog": GoalDogEnv, "dog_v1": GoalDogV1Env, "terrain": TerrainDogEnv}
 # 追従カメラ（距離, 注視点の高さ, 追従の速さ, 仰角, ロボットの向きに対する方位 or None=固定）
 # 犬型は斜め前から顔と脚の運びが見えるように、向きに合わせて回り込む
 CAMERA = {"ant": (6.0, 0.4, 0.08, -32.0, None), "dog": (2.4, 0.22, 0.3, -16.0, 140.0),
-          "dog_v1": (2.4, 0.22, 0.3, -16.0, 140.0)}
+          "dog_v1": (2.4, 0.22, 0.3, -16.0, 140.0), "terrain": (2.4, 0.22, 0.3, -16.0, 140.0)}
 
 
 class Policy:
@@ -114,7 +115,7 @@ def run(policy, route, *, size=(1920, 1080), seconds_per_leg=40.0, max_seconds=N
             "trail": [list(map(float, p)) for p in trail[::5]]}
 
 
-def compose(frame, instruction, reply, route, leg, visited, trail, t, label, speed, flash, fell):
+def compose(frame, instruction, reply, route, leg, visited, trail, t, label, speed, flash, fell, names=LANDMARK_JA, mm=None):
     img = Image.fromarray(frame).convert("RGBA")
     W, H = img.size
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -131,7 +132,7 @@ def compose(frame, instruction, reply, route, leg, visited, trail, t, label, spe
         d.text((70, y2), "LLM", font=font(28, "bold"), fill=(120, 200, 255), anchor="lm")
         x = 150
         for i, k in enumerate(route):
-            txt = LANDMARK_JA[k]
+            txt = names[k]
             done = i < len(visited)
             cur = i == leg and not done
             fill = (255, 140, 0, 255) if cur else ((90, 200, 120, 255) if done else (70, 76, 88, 255))
@@ -150,8 +151,9 @@ def compose(frame, instruction, reply, route, leg, visited, trail, t, label, spe
         d.text((70, H - 75), label, font=font(44, "bold"), fill=(255, 255, 255), anchor="lm")
         d.text((W - 70, H - 75), foot, font=font(32, "bold"), fill=(255, 255, 255), anchor="rm")
 
-    mm = minimap(330, trail, route[min(leg, len(route) - 1)] if route else None, visited=visited)
-    layer.alpha_composite(mm, (W - 370, 40))
+    if mm is None:
+        mm = minimap(330, trail, route[min(leg, len(route) - 1)] if route else None, visited=visited)
+    layer.alpha_composite(mm, (W - 40 - mm.width, 40))
 
     msg, color = (("転倒", (255, 90, 90)) if fell else (flash[0], (120, 230, 140)) if flash else (None, None))
     if msg:

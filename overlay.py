@@ -97,34 +97,31 @@ def section_card(size, title, subtitle=""):
     return np.asarray(img)
 
 
-def system_card(size, robot_img):
-    """しくみ：指示 → LLM → 経由地 → 歩行方策 → ロボット の流れ図と、観測・報酬。"""
+def system_card(size, robot_img, boxes, rows):
+    """しくみ：左から右への流れ図（boxes＝(見出し, 説明) の列）＋ロボット写真、下に観測・報酬など（rows）。"""
     img, d = slide_base(size)
     d.text((120, 90), "しくみ", font=font(72, "bold"), fill=INK)
-    boxes = [("日本語の指示", "「黄色い柱に荷物を\n届けたら帰ってきて」"), ("ローカル LLM", "gemma4（Ollama）\nPC 内で動作"),
-             ("経由地リスト", "黄色い柱 → ホーム"), ("歩行方策", "強化学習（PPO）\nゴールまで歩く")]
-    x, y, bw, bh = 120, 300, 270, 210
-    for i, (head, body) in enumerate(boxes):
+    rw = 280
+    gap = 56
+    bw = (size[0] - 360 - 120 - rw - gap * len(boxes)) // len(boxes)
+    x, y, bh = 120, 290, 220
+    for head, body in boxes:
         d.rounded_rectangle((x, y, x + bw, y + bh), radius=22, fill=(255, 247, 235), outline=ACCENT, width=4)
-        d.text((x + bw / 2, y + 48), head, font=font(36, "bold"), fill=INK, anchor="mm")
-        d.multiline_text((x + bw / 2, y + 128), body, font=font(26), fill=SUB, anchor="mm", align="center", spacing=8)
+        d.text((x + bw / 2, y + 50), head, font=font(34, "bold"), fill=INK, anchor="mm")
+        d.multiline_text((x + bw / 2, y + 135), body, font=font(25), fill=SUB, anchor="mm", align="center", spacing=8)
         x += bw
-        d.text((x + 30, y + bh / 2), "→", font=font(52, "bold"), fill=ACCENT, anchor="mm")
-        x += 60
-    rob = robot_img.resize((330, int(robot_img.height * 330 / robot_img.width)))
+        d.text((x + gap / 2, y + bh / 2), "→", font=font(48, "bold"), fill=ACCENT, anchor="mm")
+        x += gap
+    rob = robot_img.resize((rw, int(robot_img.height * rw / robot_img.width)))
     img.paste(rob, (x, y + bh // 2 - rob.height // 2))
-    d.text((x + 165, y + bh / 2 + rob.height / 2 + 30), "自作の犬型ロボット（12関節）", font=font(26, "bold"), fill=INK, anchor="mm")
-    rows = [("観測", "胴体の姿勢・速度、12 関節の角度と速度、ゴールの方向と距離、歩行のリズム"),
-            ("報酬", "目標の速さ（0.8 m/秒）でゴールへ ＋ 到着ボーナス ＋ トロットのリズム"),
-            ("", "− 胴体の傾き・横歩き・脚の開き・急な動き"),
-            ("環境", "物理シミュレータ MuJoCo")]
-    y = 680
+    d.text((x + rw / 2, y + bh / 2 + rob.height / 2 + 28), "自作の犬型ロボット", font=font(26, "bold"), fill=INK, anchor="mm")
+    y = 660
     for head, body in rows:
         if head:
             d.rounded_rectangle((120, y - 4, 230, y + 46), radius=12, fill=KHAKI)
             d.text((175, y + 21), head, font=font(28, "bold"), fill=(255, 255, 255), anchor="mm")
-        d.text((260, y + 21), body, font=font(32), fill=INK, anchor="lm")
-        y += 72
+        d.text((260, y + 21), body, font=font(31), fill=INK, anchor="lm")
+        y += 68
     return np.asarray(img)
 
 

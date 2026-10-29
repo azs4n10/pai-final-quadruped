@@ -2,7 +2,10 @@
 GoalAnt を PPO で学習する（CPU 並列）。
 
   python train_goal.py --steps 20000000
-  python train_goal.py --env GoalDog-v0 --steps 30000000   # 犬型
+  python train_goal.py --env GoalDog-v0 --steps 30000000   # 犬型（平地）
+  python train_goal.py --env TerrainDog-v0 --steps 50000000   # 犬型（坂・階段・凸凹）
+  python train_goal.py --env TerrainDog-v0 --steps 30000000 --init runs/terrain_dog/final_model.zip --out runs/terrain_dog2
+                                                              # 学習済みモデルから続けて学習（追加学習）
 途中経過のチェックポイントは runs/goal_ant/ckpt/ に保存される（動画の「成長記録」に使う）。
 """
 import argparse
@@ -18,6 +21,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
 import goal_ant  # noqa: F401  (GoalAnt-v0 を登録)
 import goal_dog  # noqa: F401  (GoalDog-v0 を登録)
+import terrain_dog  # noqa: F401  (TerrainDog-v0 を登録)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,11 +35,14 @@ class CheckpointCallback(BaseCallback):
         self.next_save = 0
         self.t0 = time.time()
         self.reached = []
+        self.levels = []
 
     def _on_step(self):
         for info in self.locals["infos"]:
             if "episode" in info:
                 self.reached.append(info["n_reached"])
+                if "levels" in info:
+                    self.levels.append(info["levels"])
         if self.num_timesteps >= self.next_save:
             tag = f"{self.num_timesteps:09d}"
             self.model.save(os.path.join(self.out_dir, f"model_{tag}"))
@@ -44,29 +51,43 @@ class CheckpointCallback(BaseCallback):
                 avg = sum(self.reached[-100:]) / len(self.reached[-100:])
                 self.logger.record("goal/reached_per_ep", avg)
             fps = self.num_timesteps / max(time.time() - self.t0, 1e-6)
+            lv = ""
+            if self.levels:  # 地形の種類ごとの難しさ（直近 100 エピソードの平均）
+                last = self.levels[-100:]
+                lv = " level " + " ".join(f"{k}={sum(x[k] for x in last) / len(last):.2f}" for k in last[0])
             print(f"[ckpt] step={self.num_timesteps} fps={fps:.0f} reached/ep(last100)="
-                  f"{(sum(self.reached[-100:]) / max(len(self.reached[-100:]), 1)):.2f}", flush=True)
+                  f"{(sum(self.reached[-100:]) / max(len(self.reached[-100:]), 1)):.2f}{lv}", flush=True)
             self.next_save += self.every
         return True
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0"])
+    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0", "TerrainDog-v0", "TerrainDog-v1"])
     p.add_argument("--steps", type=int, default=20_000_000)
     p.add_argument("--n-envs", type=int, default=16)
     p.add_argument("--save-every", type=int, default=1_000_000)
-    p.add_argument("--out", default=None, help="既定は runs/goal_ant または runs/goal_dog")
+    p.add_argument("--lr-decay", action="store_true", help="学習率を最後に 0 まで直線的に下げる（最終モデルを安定させる）")
+    p.add_argument("--init", default=None, help="続きから学習するモデル（同じ場所の *_vecnorm.pkl も読む）")
+    p.add_argument("--lr", type=float, default=3e-4)
+    p.add_argument("--out", default=None, help="既定は runs/goal_ant・runs/goal_dog・runs/terrain_dog")
     args = p.parse_args()
 
     if args.out is None:
-        args.out = os.path.join(HERE, "runs", "goal_dog" if args.env == "GoalDog-v0" else "goal_ant")
+        args.out = os.path.join(HERE, "runs", {"GoalAnt-v0": "goal_ant", "GoalDog-v0": "goal_dog", "TerrainDog-v0": "terrain_dog", "TerrainDog-v1": "terrain_dog_v1"}[args.env])
     torch.set_num_threads(4)
     ckpt = os.path.join(args.out, "ckpt")
     os.makedirs(ckpt, exist_ok=True)
 
     venv = make_vec_env(args.env, n_envs=args.n_envs, seed=0, vec_env_cls=SubprocVecEnv)
-    venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
+    if args.init:
+        from demo import vecnorm_for
+
+        venv = VecNormalize.load(vecnorm_for(args.init), venv)
+        venv.training = True
+    else:
+        venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
+    lr = (lambda progress_remaining: args.lr * progress_remaining) if args.lr_decay else args.lr
 
     model = PPO(
         "MlpPolicy",
@@ -74,7 +95,7 @@ def main():
         n_steps=512,
         batch_size=2048,
         n_epochs=10,
-        learning_rate=3e-4,
+        learning_rate=lr,
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
@@ -85,6 +106,8 @@ def main():
         verbose=0,
         seed=0,
     )
+    if args.init:
+        model.set_parameters(args.init)
     model.set_logger(configure(args.out, ["csv"]))
     model.learn(total_timesteps=args.steps, callback=CheckpointCallback(args.save_every, ckpt))
     model.save(os.path.join(args.out, "final_model"))

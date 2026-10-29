@@ -5,3 +5,5 @@ train_goal.log
 report/*.pdf
 train_dog.log
 make_video.log
+train_terrain.log
+train_terrain_v1.log

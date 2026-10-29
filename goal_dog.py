@@ -65,6 +65,22 @@ def head_xml():
       <geom type="box" size="0.03 0.03 0.012" pos="0.3 0 0.08" class="deco" material="metal" rgba="{DARK}"/>"""
 
 
+def robot_xml(childclass=""):
+    """ロボット本体（胴体＋頭＋脚 4 本）の MJCF。"""
+    cc = f' childclass="{childclass}"' if childclass else ""
+    return f"""<body name="torso" pos="0 0 0.36"{cc}>
+      <freejoint name="root"/>
+      <geom name="torso_geom" type="box" size="0.26 0.085 0.06" mass="6" material="shell" rgba="{WHITE}"/>
+      <geom type="box" size="0.17 0.087 0.032" pos="0 0 -0.01" class="deco" material="metal" rgba="{DARK}"/>
+      <geom type="box" size="0.262 0.088 0.006" pos="0 0 0.03" class="deco" material="shell" rgba="{ORANGE}"/>
+      <geom type="box" size="0.2 0.065 0.008" pos="-0.02 0 0.062" class="deco" material="metal" rgba="{DARK}"/>
+      <geom type="cylinder" size="0.035 0.01" pos="0.13 0 0.066" class="deco" material="metal" rgba="{DARK}"/>
+      <geom type="cylinder" size="0.037 0.004" pos="0.13 0 0.074" class="deco" rgba="{LED}"/>
+      {head_xml()}
+      {"".join(leg_xml(*leg) for leg in LEGS)}
+    </body>"""
+
+
 def build_xml():
     marks = []
     for name, ((x, y), (r, g, b, a)) in LANDMARKS.items():
@@ -95,17 +111,7 @@ def build_xml():
   <worldbody>
     <light diffuse="0.75 0.73 0.70" dir="-0.4 -0.3 -1" directional="true" pos="0 0 5" specular=".15 .15 .15" castshadow="true"/>
     <geom name="floor" type="plane" size="40 40 40" material="MatPlane" contype="1" conaffinity="1" condim="3"/>
-    <body name="torso" pos="0 0 0.36">
-      <freejoint name="root"/>
-      <geom name="torso_geom" type="box" size="0.26 0.085 0.06" mass="6" material="shell" rgba="{WHITE}"/>
-      <geom type="box" size="0.17 0.087 0.032" pos="0 0 -0.01" class="deco" material="metal" rgba="{DARK}"/>
-      <geom type="box" size="0.262 0.088 0.006" pos="0 0 0.03" class="deco" material="shell" rgba="{ORANGE}"/>
-      <geom type="box" size="0.2 0.065 0.008" pos="-0.02 0 0.062" class="deco" material="metal" rgba="{DARK}"/>
-      <geom type="cylinder" size="0.035 0.01" pos="0.13 0 0.066" class="deco" material="metal" rgba="{DARK}"/>
-      <geom type="cylinder" size="0.037 0.004" pos="0.13 0 0.074" class="deco" rgba="{LED}"/>
-      {head_xml()}
-      {"".join(leg_xml(*leg) for leg in LEGS)}
-    </body>
+    {robot_xml()}
     {chr(10).join(marks)}
     <body name="goal" mocap="true" pos="0 0 0">
       <geom type="cylinder" size="0.6 0.01" pos="0 0 0.01" rgba="1 0.5 0 0.35" class="deco"/>
