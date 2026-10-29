@@ -1,5 +1,6 @@
 """
-提出動画を組み立てる：OP → タイトル → しくみ → 学習の成長 → 家と庭での指示デモ×3 → まとめ → ED（ナレーション付き）
+提出動画を組み立てる：OP → タイトル → 動機 → 全体構成 → 手法と工夫 → 評価結果 → 学習の成長 → デモ×3 → 考察 → ED
+（ナレーション付き。字幕ファイル .srt も書き出す）
 
   python make_video.py --op path/to/OP.mp4 --ed path/to/ED.mp4 --slide path/to/slide.jpg
 """
@@ -21,14 +22,14 @@ MODEL = os.path.join(HERE, "models", "terrain_model.zip")
 SIZE = (1920, 1080)
 FPS = 30
 
-ADOPTED = 50_000_000  # 採用モデル（学習の最終時点）のステップ数
 GROWTH_SECONDS = 10
-# 学習の成長：充電ステーションから庭の階段の上の高台へ
-GROWTH = [("000000016", "学習前"), ("010000000", "学習 1000万ステップ"), ("025000000", "学習 2500万ステップ"),
-          (None, "学習 5000万ステップ（採用モデル）")]
+GROWTH_SEED = 3
+# 学習の成長：充電ステーションから庭の階段の上の高台へ（4 段階を 2×2 の画面で同時に見せる）
+GROWTH = [("000000016", "学習前"), ("002000000", "200万ステップ"), ("005000000", "500万ステップ"),
+          (None, "5000万ステップ（採用）")]
 DEMO_SEED = 1
-DEMOS = [
-    ("demo1", "キッチンで荷物を受け取って、寝室に届けて", 1),
+DEMOS = [  # (名前, 指示, 倍速)
+    ("demo1", "キッチンで荷物を受け取って、寝室に届けて", 2),
     ("demo2", "庭の階段を上って高台に行き、そのあと坂の上にも寄ってから充電ステーションに戻って", 2),
     ("demo3", "子ども部屋のおもちゃ箱を見てきて、リビングを通って帰ってきて", 2),
 ]
@@ -45,7 +46,7 @@ def render_clips(force=False):
         out = os.path.join(CLIPS, f"growth{i}.mp4")
         if force or not os.path.exists(out):
             subprocess.run([py, demo, "--route", "stairs_top", "--model", model_path(tag), "--label", label,
-                            "--seconds", str(GROWTH_SECONDS), "--seed", str(DEMO_SEED), "--out", out], check=True)
+                            "--seconds", str(GROWTH_SECONDS), "--seed", str(GROWTH_SEED), "--out", out], check=True)
     for name, text, speed in DEMOS:
         out = os.path.join(CLIPS, f"{name}.mp4")
         if force or not os.path.exists(out):
@@ -62,48 +63,74 @@ def render_clips(force=False):
                     json.dump(log, f, ensure_ascii=False, indent=1)
 
 
-# ナレーション（VOICEVOX:ずんだもん）。部品ごとに (開始秒, 文)
-VOICE = {
-    "title": [(0.4, "日本語で指示できる、四足歩行ロボットを紹介します。")],
-    "system": [(0.5, "日本語の指示を、パソコンの中で動くLLMが、立ち寄る部屋の順番に変換します。"),
-               (7.4, "間取り図から壁を避ける経路を計算し、強化学習で歩き方を身につけたロボットが、段差や坂も越えて進みます。")],
-    "growth": [(0.3, "まず、学習によって階段を上れるようになる様子をご覧ください。")],
-    "growth0": [(0.3, "学習前は、脚を動かしても前に進めません。")],
-    "growth1": [(0.3, "一千万ステップでは歩けるようになりましたが、段差ではまだ不安定です。")],
-    "growth2": [(0.3, "二千五百万ステップでは、階段を上れるようになってきました。")],
-    "growth3": [(0.3, "こちらが採用したモデルです。足元の高さを感じ取りながら、階段を上り切ります。")],
-    "demo": [(0.3, "それでは、家と庭で、日本語の指示を出してみます。")],
-    "demo1": [(0.6, "キッチンで荷物を受け取って、寝室に届けて。LLMが、キッチンと寝室の順番に変換しました。"),
-              (12.0, "玄関の階段を上り、ドアを通って、壁を避けながら進みます。")],
-    "demo2": [(0.6, "庭の階段と坂を上る指示です。ここからは2倍速です。"),
-              (9.0, "階段の高台、坂の上、充電ステーションの順に回ります。")],
-    "demo3": [(0.6, "子ども部屋を見てから、リビングを通って帰る指示です。こちらも2倍速です。")],
-    "summary": [(0.5, "最も難しい地形でも、ゴールへの到達率は高く、家と庭での指示も成功しました。"),
-                (7.6, "LLMはパソコンの中だけで動作するため、外部のサービスにデータを送る必要がありません。")],
-}
+def growth_grid():
+    """4 段階の成長記録を 2×2 に並べた 1 本の動画にする（短いものは最後の画面で止める）。"""
+    out = os.path.join(CLIPS, "growth_grid.mp4")
+    ins = [os.path.join(CLIPS, f"growth{i}.mp4") for i in range(len(GROWTH))]
+    ff = imageio_ffmpeg.get_ffmpeg_exe()
+    cmd = [ff, "-y", "-loglevel", "error"]
+    for p in ins:
+        cmd += ["-i", p]
+    w, h = SIZE[0] // 2, SIZE[1] // 2
+    f = "".join(f"[{i}:v]scale={w}:{h},tpad=stop_mode=clone:stop_duration={GROWTH_SECONDS},"
+                f"trim=duration={GROWTH_SECONDS},setpts=PTS-STARTPTS[g{i}];" for i in range(4))
+    f += "[g0][g1][g2][g3]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0[out]"
+    cmd += ["-filter_complex", f, "-map", "[out]", "-r", str(FPS), "-c:v", "libx264", "-crf", "18", out]
+    subprocess.run(cmd, check=True)
+    return out
 
 
-def card(name, seconds, frame):
+def results():
+    ev = json.load(open(os.path.join(RUN, "eval_final.json")))
+    hv = json.load(open(os.path.join(RUN, "house_eval.json"), encoding="utf-8"))
+    return ev, hv
+
+
+def pct(v):
+    return f"{v * 100:.0f}%"
+
+
+# ナレーション（VOICEVOX:ずんだもん）。部品ごとに (開始秒, 文)。結果の数字は評価結果から入れる
+def voice(ev, hv):
+    up = {lv: ev[lv]["stairs_up"]["success"] for lv in ev}
+    house_ok = sum(v["success"] for v in hv.values()) / len(hv)
+    return {
+        "title": [(0.4, "日本語で指示できる、四足歩行ロボットを紹介します。")],
+        "motive": [(0.5, "家の中で、荷物を運んだり見回りをしたりするロボットを、日本語で動かしたいと考えました。"),
+                   (None, "家には玄関の段差や階段があるため、車輪ではなく四足歩行にしました。"),
+                   (None, "また、間取りや会話を外部に送らないよう、LLMはパソコンの中で動かします。")],
+        "system": [(0.5, "日本語の指示を、ローカルLLMが、立ち寄る場所の順番に変換します。"),
+                   (None, "間取り図から壁や家具を避ける経路を計算し、強化学習で身につけた歩き方で、段差や坂を越えて進みます。")],
+        "method": [(0.5, "工夫は四つです。"),
+                   (None, "一つ目に、足元三十五点の地面の高さを観測に入れました。"),
+                   (None, "二つ目に、地形の種類ごとに、上達に合わせて難しくするカリキュラム学習を行いました。"),
+                   (None, "三つ目に、LLMの出力を、登録した場所の名前だけに制限しました。"),
+                   (None, "四つ目に、壁は経路計画で避け、段差は歩行方策が越えるように、役割を分けました。")],
+        "results": [(0.5, "評価の結果です。地形の種類と難しさを変えて、各三十回、ゴールまで歩かせました。"),
+                    (None, f"上り階段は、段差四センチで{up['0.25'] * 100:.0f}パーセント、六センチで{up['0.5'] * 100:.0f}パーセント成功し、"
+                           "八センチ以上は上れませんでした。"),
+                    (None, f"家と庭の三つの経路は、平均{house_ok * 100:.0f}パーセントで、最後の地点まで着きました。")],
+        "growth": [(0.3, "同じ階段でも、学習が進むにつれて、転ばずに上れるようになりました。")],
+        "demo1": [(0.6, "それでは、日本語で指示を出してみます。ここからは二倍速です。"),
+                  (None, "玄関の階段を上り、壁を避けて、キッチンから寝室へ向かいます。")],
+        "demo2": [(0.6, "次は、庭の階段と坂です。"),
+                  (None, "階段の高台、坂の上、充電ステーションの順に回ります。")],
+        "demo3": [(0.6, "最後は、子ども部屋からリビングを通って帰る指示です。")],
+        "discussion": [(0.5, "考察です。上れる段差は六センチ前後までで、家と庭での失敗も、すべて段差や坂のある場所で起きました。"),
+                       (None, "また、角が鋭い段では失敗が増えたため、段の形を変えながら学習させる必要があります。"),
+                       (None, "今後は、扉の開け閉めや、カメラ画像からの部屋の認識、実機での検証に取り組みたいと考えています。")],
+    }
+
+
+def card(name, seconds, frame, lines):
     """静止画の部品。ナレーションが収まる長さに伸ばす。"""
-    from narration import seconds as voice_seconds
-
-    need = max((t + voice_seconds(text) + 0.8 for t, text in VOICE.get(name, [])), default=0)
+    need = max((t + d + 0.8 for t, d in lines), default=0)
     out = os.path.join(CLIPS, f"card_{name}.mp4")
     w = imageio.get_writer(out, fps=FPS, quality=8, macro_block_size=8)
     for _ in range(int(max(seconds, need) * FPS)):
         w.append_data(frame)
     w.close()
     return out
-
-
-def summary_stats():
-    ev = json.load(open(os.path.join(RUN, "eval_final.json")))
-    hv = json.load(open(os.path.join(RUN, "house_eval.json"), encoding="utf-8"))
-    ok = sum(round(v["success"] * 20) for v in hv.values())
-    return [(f"{ev['mean'] * 100:.0f}%", "ゴール到達（最難の地形）\n段差 10 cm・坂・凸凹"),
-            (f"{ok}/{len(hv) * 20}", "家と庭での指示\n（3経路×20回）"),
-            ("10 cm", "上れる段差\n（体高の約 3 割）"),
-            ("0 件", "外部 API の利用\n（LLM は PC 内で動作）")]
 
 
 def duration(path):
@@ -115,7 +142,7 @@ def main():
 
     from narration import seconds as voice_seconds
     from narration import write_srt, write_track
-    from overlay import section_card, summary_card, system_card
+    from overlay import pairs_card, points_card, results_card, section_card, system_card
 
     p = argparse.ArgumentParser()
     p.add_argument("--op", required=True)
@@ -126,58 +153,98 @@ def main():
     args = p.parse_args()
 
     render_clips(args.force)
+    ev, hv = results()
+    VOICE = voice(ev, hv)
+    # 文の開始時刻：None は前の文の直後（0.3 秒あけて）
+    timed = {}
+    for name, items in VOICE.items():
+        t, out = 0.0, []
+        for off, text in items:
+            start = off if off is not None else t + 0.3
+            d = voice_seconds(text)
+            out.append((start, text, d))
+            t = start + d
+        timed[name] = out
+
+    def lines(name):
+        return [(s, d) for s, _, d in timed.get(name, [])]
+
     title, sub = "日本語で指示できる四足歩行ロボット", "ローカルLLM × 経路計画 × 強化学習で、家の中も段差も歩く"
     robot = Image.open(os.path.join(HERE, "report", "robot.jpg")).crop((120, 60, 860, 560))
+    motive = pairs_card(SIZE, "動機", "家の中で荷物運びや見回りをするロボットを、日本語で動かしたい", [
+        ("家の中には段差・階段・坂がある", "車輪ではなく四足歩行"),
+        ("指示は普段の言葉で出したい", "LLM で指示を解釈"),
+        ("間取りや会話を外部に送りたくない", "PC 内で動くローカル LLM"),
+    ])
     system = system_card(SIZE, robot, [
         ("日本語の指示", "「キッチンで荷物を\n受け取って…」"),
-        ("ローカル LLM", "gemma4（Ollama）\n部屋の順番に変換"),
-        ("経路計画", "間取り図から A* で\n壁を避ける経由地"),
-        ("歩行方策", "強化学習（PPO）\n段差・坂も歩く"),
+        ("ローカル LLM", "gemma4（Ollama）\n立ち寄る場所の順番"),
+        ("経路計画", "間取り図から A* で\n壁・家具を避ける"),
+        ("歩行方策", "強化学習（PPO）\n段差・坂を越える"),
     ], [
-        ("観測", "胴体の姿勢・速度、関節の角度と速度、ゴールの方向と距離、足元 35 点の地面の高さ"),
-        ("報酬", "目標の速さ（0.8 m/秒）でゴールへ ＋ 到着 ＋ トロットのリズム − 傾き・横歩き・急な動き"),
-        ("学習", "坂・階段・凸凹の地形を、上達に合わせて難しくしていく（カリキュラム学習）"),
-        ("環境", "物理シミュレータ MuJoCo 上に、ロボット・家・庭をすべて自作"),
+        ("シミュレータ", "MuJoCo 上に、犬型ロボット（12 関節）・家・庭をすべて自作"),
+        ("観測", "胴体の姿勢・速度、関節の角度・速度、ゴールの方向と距離、足元 35 点の地面の高さ"),
+        ("報酬", "目標の速さでゴールへ向かう＋到着＋トロットのリズム − 傾き・横歩き・急な動き"),
+        ("学習", "PPO・16 環境並列・5000 万ステップ（CPU のみ、約 5 時間）"),
     ])
+    method = points_card(SIZE, "手法と工夫", "", [
+        ("足元の地形を測る", "胴体のまわり 35 点の地面の高さを観測に入れ、段差や坂を見ながら足を運ぶ"),
+        ("地形ごとのカリキュラム学習", "平地・凸凹・丘・上り階段・下り階段のそれぞれで、うまく歩けたら難しく、転んだら易しくする"),
+        ("LLM の出力を制限", "JSON Schema で出力を【登録した場所の名前】に限定し、存在しない部屋や形式の崩れを防ぐ"),
+        ("経路計画と歩行の分担", "壁・家具は地図と A* で避け、段差・坂は歩行方策が自分で越える（家の出入りは階段を正面から）"),
+    ])
+    lv_cm = {"0.25": "4 cm", "0.5": "6 cm", "0.75": "8 cm", "1.0": "10 cm"}
+    route_ja = {"kitchen→bedroom": "キッチン → 寝室", "stairs_top→slope_top→dock": "階段の高台 → 坂の高台 → 充電",
+                "kids→living→dock": "子ども部屋 → リビング → 充電"}
+    table = [["経路", "成功", "転倒"]] + [
+        [route_ja.get(k, k), pct(v["success"]), pct(v["fell"])] for k, v in hv.items()]
+    res = results_card(SIZE, "評価結果", "上り階段の成功率（段の高さ別、各 30 回）",
+                       [(f"段差\n{lv_cm[lv]}", ev[lv]["stairs_up"]["success"]) for lv in ev],
+                       "家と庭での指示（各 20 回）", table,
+                       "成功：3.5 m 先のゴールに 20 秒以内に転ばずに着く\n"
+                       f"平地・丘（勾配 14° まで）：【{pct(min(ev[lv][k]['success'] for lv in ev for k in ('flat', 'hills')))} 以上】\n"
+                       f"凸凹：±2.8 cm まで【{pct(min(ev[lv]['rough']['success'] for lv in ('0.25', '0.5', '0.75')))} 以上】、"
+                       f"±3.5 cm で {pct(ev['1.0']['rough']['success'])}")
+    discussion = points_card(SIZE, "考察と今後", "", [
+        ("上れる段差は 6 cm 前後まで", "8 cm 以上は上れない。家と庭での失敗も【すべて段差や坂のある場所】。学習中の階段の難しさも 0.3（段差 約 4.5 cm）付近で頭打ち"),
+        ("段の形の違いに弱い", "学習した高さマップの段では上れても、【角の鋭い箱の段】では失敗が増えた → 段の形を変えながら学習する必要"),
+        ("今後", "扉の開け閉め（アームの追加）、カメラ画像からの部屋の認識、実機の四足ロボットでの検証（sim-to-real）"),
+    ])
+
     parts = [("op", args.op),
-             ("title", card("title", 4, slide_title(args.slide, title, sub) if args.slide else section_card(SIZE, title, sub))),
-             ("system", card("system", 8, system)),
-             ("growth", card("growth", 3, section_card(SIZE, "学習による成長", "充電ステーションから庭の階段の上の高台へ（学習段階ごとに 10 秒）")))]
-    parts += [(f"growth{i}", os.path.join(CLIPS, f"growth{i}.mp4")) for i in range(len(GROWTH))]
-    parts.append(("demo", card("demo", 3, section_card(SIZE, "日本語で指示してみる", "指示 → LLM が部屋の順番を計画 → 経路計画 → 歩いて回る（2・3本目は2倍速）"))))
+             ("title", card("title", 4, slide_title(args.slide, title, sub) if args.slide else section_card(SIZE, title, sub), lines("title"))),
+             ("motive", card("motive", 6, motive, lines("motive"))),
+             ("system", card("system", 6, system, lines("system"))),
+             ("method", card("method", 6, method, lines("method"))),
+             ("results", card("results", 6, res, lines("results"))),
+             ("growth", growth_grid())]
     parts += [(name, os.path.join(CLIPS, f"{name}.mp4")) for name, _, _ in DEMOS]
-    parts.append(("summary", card("summary", 8, summary_card(SIZE, summary_stats(), [
-        "今後：扉の開け閉め（アームの追加）、カメラ画像からの部屋の認識、実機の四足ロボットへの sim-to-real"],
-        "音声：VOICEVOX:ずんだもん"))))
+    parts.append(("discussion", card("discussion", 6, discussion, lines("discussion"))))
     parts.append(("ed", args.ed))
 
     # ナレーションを部品の開始時刻に合わせて 1 本の音声トラックにする
-    events, t, pads = [], 0.0, []
+    events, t = [], 0.0
     for name, path in parts:
         d = duration(path)
-        # 転倒などで早く終わった成長記録は、最後の画面で止めて長さをそろえる
-        pad = max(GROWTH_SECONDS - d, 0.0) if name.startswith("growth") and name != "growth" else 0.0
-        pads.append(pad)
-        d += pad
-        for off, text in VOICE.get(name, []):
-            if off + voice_seconds(text) > d:
-                print(f"[warn] {name}: ナレーションが映像より長い（{off + voice_seconds(text):.1f}s > {d:.1f}s）")
-            events.append((t + off, text))
+        for start, text, dur in timed.get(name, []):
+            if start + dur > d:
+                print(f"[warn] {name}: ナレーションが映像より長い（{start + dur:.1f}s > {d:.1f}s）")
+            events.append((t + start, text))
         t += d
-    voice = os.path.join(CLIPS, "voice.wav")
-    write_track(events, t, voice)
+    print(f"[info] 全体 {t:.1f} 秒")
+    voice_wav = os.path.join(CLIPS, "voice.wav")
+    write_track(events, t, voice_wav)
     write_srt(events, os.path.splitext(args.out)[0] + ".srt")  # 字幕（YouTube で ON/OFF できる）
 
     ff = imageio_ffmpeg.get_ffmpeg_exe()
     cmd = [ff, "-y", "-loglevel", "error"]
     for _, prt in parts:
         cmd += ["-i", prt]
-    cmd += ["-i", voice]
+    cmd += ["-i", voice_wav]
     n = len(parts)
     norm = "".join(
         f"[{i}:v]scale={SIZE[0]}:{SIZE[1]}:force_original_aspect_ratio=decrease,"
-        f"pad={SIZE[0]}:{SIZE[1]}:(ow-iw)/2:(oh-ih)/2,fps={FPS},format=yuv420p,setsar=1"
-        + (f",tpad=stop_mode=clone:stop_duration={pads[i]:.3f}" if pads[i] else "") + f"[v{i}];"
+        f"pad={SIZE[0]}:{SIZE[1]}:(ow-iw)/2:(oh-ih)/2,fps={FPS},format=yuv420p,setsar=1[v{i}];"
         for i in range(n)
     )
     concat = "".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[out]"

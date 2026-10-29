@@ -64,7 +64,7 @@ def _walls():
 
 FURNITURE = [  # (x0, x1, y0, y1, 高さ, 色, 名前)
     (2.0, 4.0, 3.3, 4.0, 0.42, "0.35 0.42 0.55 1", "ソファ"),
-    (2.4, 3.6, 2.0, 2.8, 0.35, "0.55 0.40 0.28 1", "テーブル"),
+    (2.5, 3.5, 2.4, 3.0, 0.35, "0.55 0.40 0.28 1", "テーブル"),
     (5.45, 5.9, 0.8, 3.2, 0.5, "0.25 0.25 0.28 1", "テレビ台"),
     (5.3, 5.9, 4.7, 7.9, 0.9, "0.85 0.85 0.82 1", "台所"),
     (2.2, 3.6, 6.3, 7.3, 0.72, "0.55 0.40 0.28 1", "食卓"),
@@ -79,22 +79,52 @@ STAIRS = dict(x0=-6.0, x1=-4.4, y0=-5.0, y1=-2.6, top=0.24, step=0.06, tread=0.4
 SLOPE = dict(x0=4.4, x1=6.0, y0=-5.0, y1=-2.6, top=0.4, run=2.0)  # 西から東へ上る（約 11°）
 
 
-def _garden():
-    """(geom の XML 文字列のリスト, 経路計画で通れない箱のリスト)。"""
-    g, blocked = [], []
+def _ground_blocks():
+    """地面より高い部分（家の床・ポーチ・庭の高台と段）。(名前, x0, x1, y0, y1, 高さ, 色, 材質) のリスト。"""
+    b = [("house_floor", -6.0, 6.0, 0.0, 8.0, FLOOR, "1 1 1 1", "MatWood"),
+         ("porch", -1.2, 1.2, -PORCH_DEPTH, 0.0, FLOOR, "1 1 1 1", "MatStone")]
+    n = int(round(FLOOR / PORCH_STEP))
+    for i in range(1, n):  # 玄関前の階段（踊り場の手前に、低い方から）
+        b.append((f"porch{i}", -1.2, 1.2, -PORCH_DEPTH - 0.4 * (n - i), -PORCH_DEPTH, i * FLOOR / n, "0.93 0.93 0.93 1", "MatStone"))
     s = STAIRS
-    g.append(_box("stairs_top", s["x0"], s["x1"], s["y0"], s["y1"], 0, s["top"], "1 1 1 1", material="MatStone"))
-    n = int(round(s["top"] / s["step"]))
-    for i in range(1, n):  # 高台の東側に段（高い方から）
+    b.append(("stairs_top", s["x0"], s["x1"], s["y0"], s["y1"], s["top"], "1 1 1 1", "MatStone"))
+    for i in range(1, int(round(s["top"] / s["step"]))):  # 高台の東側に段（高い方から）
         x1 = s["x1"] + i * s["tread"]
-        g.append(_box(f"stair{i}", x1 - s["tread"], x1, s["y0"], s["y1"], 0, s["top"] - i * s["step"], "0.93 0.93 0.93 1", material="MatStone"))
+        b.append((f"stair{i}", x1 - s["tread"], x1, s["y0"], s["y1"], s["top"] - i * s["step"], "0.93 0.93 0.93 1", "MatStone"))
     p = SLOPE
-    g.append(_box("slope_top", p["x0"], p["x1"], p["y0"], p["y1"], 0, p["top"], "1 1 1 1", material="MatStone"))
+    b.append(("slope_top", p["x0"], p["x1"], p["y0"], p["y1"], p["top"], "1 1 1 1", "MatStone"))
+    return b
+
+
+# 地面の高さマップ（歩く面はすべてこれ。見た目は同じ形の箱で描く）
+GX0, GX1, GY0, GY1, GRES = -7.0, 7.0, -7.0, 9.0, 0.05
+HF_TOP = 0.5  # 高さマップの最大の高さ [m]
+
+
+def ground_heights():
+    """高さマップの値 [m]（行が y、列が x）。段は箱の形、坂は直線の斜面。"""
+    xs = np.arange(GX0, GX1 + 1e-9, GRES)
+    ys = np.arange(GY0, GY1 + 1e-9, GRES)
+    X, Y = np.meshgrid(xs, ys)
+    h = np.zeros_like(X)
+    for _, x0, x1, y0, y1, top, _, _ in _ground_blocks():
+        h = np.where((X >= x0) & (X <= x1) & (Y >= y0) & (Y <= y1), np.maximum(h, top), h)
+    p = SLOPE
+    inside = (X >= p["x0"] - p["run"]) & (X <= p["x0"]) & (Y >= p["y0"]) & (Y <= p["y1"])
+    h = np.where(inside, np.maximum(h, p["top"] * (X - (p["x0"] - p["run"])) / p["run"]), h)
+    return h
+
+
+def _garden():
+    """(見た目の geom の XML 文字列のリスト, 経路計画で通れない箱のリスト)。"""
+    g, blocked = [], []
+    s, p = STAIRS, SLOPE
+    n = int(round(s["top"] / s["step"]))
     ang = np.arctan2(p["top"], p["run"])
     L = np.hypot(p["top"], p["run"])
     cx, cz = p["x0"] - p["run"] / 2, p["top"] / 2 - 0.05 * np.cos(ang)
     g.append(f'<geom name="ramp" type="box" size="{L / 2 + 0.03} {(p["y1"] - p["y0"]) / 2} 0.05" pos="{cx} {(p["y0"] + p["y1"]) / 2} {cz}" '
-             f'euler="0 {-ang} 0" rgba="0.93 0.93 0.93 1" material="MatStone" class="world"/>')
+             f'euler="0 {-ang} 0" rgba="0.93 0.93 0.93 1" material="MatStone" class="deco"/>')
     # 手すり（高台と坂の、上り口以外の縁）。経路計画では通れない
     rails = [
         (s["x0"], s["x1"] + (n - 1) * s["tread"], s["y0"] - 0.04, s["y0"] + 0.04),
@@ -107,6 +137,11 @@ def _garden():
     for i, (x0, x1, y0, y1) in enumerate(rails):
         g.append(_box(f"wall_rail{i}", x0, x1, y0, y1, 0, 0.5, "0.42 0.32 0.24 1", group=1))
         blocked.append((x0, x1, y0, y1))
+    # 玄関前の階段の両脇の植え込み（階段に正面からまっすぐ入るように）
+    y_bottom = -PORCH_DEPTH - 0.4 * (int(round(FLOOR / PORCH_STEP)) - 1)
+    for i, (x0, x1) in enumerate([(-1.6, -1.25), (1.25, 1.6)]):
+        g.append(_box(f"hedge{i}", x0, x1, y_bottom - 0.8, -0.05, 0, 0.4, "0.30 0.48 0.26 1", group=1))
+        blocked.append((x0, x1, y_bottom - 0.8, -0.05))
     return g, blocked
 
 
@@ -176,14 +211,12 @@ MATERIALS = """<texture name="tex_grass" type="2d" file="tex/grass.png"/>
 
 
 def build_xml():
-    parts = []
-    # 家の床と、玄関前のポーチ（床と同じ高さの踊り場＋階段）
-    parts.append(_box("house_floor", -6.0, 6.0, 0.0, 8.0, 0, FLOOR, "1 1 1 1", material="MatWood"))
-    parts.append(_box("porch", -1.2, 1.2, -PORCH_DEPTH, 0.0, 0, FLOOR, "1 1 1 1", material="MatStone"))
-    n = int(round(FLOOR / PORCH_STEP))
-    for i in range(1, n):
-        y1 = -PORCH_DEPTH
-        parts.append(_box(f"porch{i}", -1.2, 1.2, y1 - 0.4 * (n - i), y1, 0, i * FLOOR / n, "0.93 0.93 0.93 1", material="MatStone"))
+    # 歩く面：物理と足元のレイは高さマップ（グループ 3：画面には出さない）、見た目は同じ形の箱（グループ 2）
+    ny, nx = ground_heights().shape
+    parts = [f'<geom name="ground" type="hfield" hfield="ground" pos="{(GX0 + GX1) / 2} {(GY0 + GY1) / 2} 0" '
+             f'contype="1" conaffinity="1" group="3"/>']
+    for name, x0, x1, y0, y1, top, rgba, mat in _ground_blocks():
+        parts.append(_box(name, x0, x1, y0, y1, 0, top, rgba, material=mat).replace('class="world"', 'class="deco"'))
     for i, (x0, x1, y0, y1, z0, z1) in enumerate(_walls()):
         parts.append(_box(f"wall_{i}", x0, x1, y0, y1, z0, z1, "1 1 1 1", group=1, material="MatWall"))
     for i, (x0, x1, y0, y1, h, rgba, _) in enumerate(FURNITURE):
@@ -193,10 +226,12 @@ def build_xml():
     # 充電ステーション（見た目だけ）
     x, y = PLACES["dock"][1]
     parts.append(f'<geom type="cylinder" pos="{x} {y} 0.005" size="0.6 0.005" rgba="0.32 0.35 0.40 1" class="deco"/>')
-    parts.append(f'<geom type="cylinder" pos="{x} {y} 0.006" size="0.5 0.005" rgba="0.2 0.85 1 1" class="deco"/>')
+    parts.append(f'<geom type="cylinder" pos="{x} {y} 0.006" size="0.5 0.005" rgba="1 0.85 0.4 1" class="deco"/>')
     parts.append(f'<geom type="cylinder" pos="{x} {y} 0.007" size="0.45 0.005" rgba="0.32 0.35 0.40 1" class="deco"/>')
-    floor = '<geom name="floor" type="plane" size="40 40 1" material="MatGrass" class="world"/>'
+    floor = '<geom name="floor" type="plane" size="40 40 1" material="MatGrass" class="deco"/>'
     xml = scene_xml(floor, "\n    ".join(parts), model="house_dog")
+    xml = xml.replace('<material name="MatTerrain"', f'<hfield name="ground" nrow="{ny}" ncol="{nx}" '
+                      f'size="{(GX1 - GX0) / 2} {(GY1 - GY0) / 2} {HF_TOP} 0.1"/>\n    <material name="MatTerrain"')
     xml = xml.replace('<default class="world">',
                       '<default class="obstacle"><geom contype="1" conaffinity="1" group="1"/></default>\n    <default class="world">')
     xml = xml.replace('<material name="MatTerrain"', MATERIALS + '\n    <material name="MatTerrain"')
@@ -220,6 +255,8 @@ class HouseDogEnv(TerrainDogEnv):
             build_xml()
         kwargs.setdefault("curriculum", False)
         super().__init__(xml_path=XML_PATH, **kwargs)
+        hf = self.model.hfield("ground")
+        self.model.hfield_data[hf.adr[0]:hf.adr[0] + hf.nrow[0] * hf.ncol[0]] = (ground_heights() / HF_TOP).ravel()
         self.fixed_goal = True
         self.start_pos = np.array(PLACES[HOME][1])
         self.start_yaw = np.pi / 2  # 家の方を向いて出発
@@ -276,8 +313,24 @@ def _free_line(occ, a, b):
     return True
 
 
+def _porch_gates():
+    """玄関の階段の下（外）と、扉を入ったところ（中）の通過点。"""
+    y_bottom = -PORCH_DEPTH - 0.4 * (int(round(FLOOR / PORCH_STEP)) - 1)
+    return np.array([0.0, y_bottom - 0.6]), np.array([0.0, 0.7])
+
+
 def plan_path(start, goal):
-    """start から goal までの経由地（最後が goal）。通れる経路が無ければ goal だけを返す。"""
+    """start から goal までの経由地（最後が goal）。家の出入りは、玄関の階段を正面からまっすぐ上り下りする。"""
+    out_gate, in_gate = _porch_gates()
+    inside = lambda p: p[1] > -PORCH_DEPTH  # noqa: E731
+    if inside(start) != inside(goal):
+        a, b = (out_gate, in_gate) if inside(goal) else (in_gate, out_gate)
+        return _plan(start, a) + [b] + _plan(b, goal)
+    return _plan(start, goal)
+
+
+def _plan(start, goal):
+    """A* で start から goal までの経由地（最後が goal）。通れる経路が無ければ goal だけを返す。"""
     global _OCC
     if _OCC is None:
         _OCC = occupancy()

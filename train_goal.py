@@ -69,6 +69,7 @@ def main():
     p.add_argument("--save-every", type=int, default=1_000_000)
     p.add_argument("--lr-decay", action="store_true", help="学習率を最後に 0 まで直線的に下げる（最終モデルを安定させる）")
     p.add_argument("--init", default=None, help="続きから学習するモデル（同じ場所の *_vecnorm.pkl も読む）")
+    p.add_argument("--resume", default=None, help="中断した学習をチェックポイント（ckpt/model_*.zip）から再開する")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--out", default=None, help="既定は runs/goal_ant・runs/goal_dog・runs/terrain_dog")
     args = p.parse_args()
@@ -80,6 +81,10 @@ def main():
     os.makedirs(ckpt, exist_ok=True)
 
     venv = make_vec_env(args.env, n_envs=args.n_envs, seed=0, vec_env_cls=SubprocVecEnv)
+    start = 0
+    if args.resume:  # 中断前と同じ学習率の予定・ステップ数のまま続ける
+        args.init = args.resume
+        start = int(os.path.basename(args.resume)[6:15])
     if args.init:
         from demo import vecnorm_for
 
@@ -109,7 +114,11 @@ def main():
     if args.init:
         model.set_parameters(args.init)
     model.set_logger(configure(args.out, ["csv"]))
-    model.learn(total_timesteps=args.steps, callback=CheckpointCallback(args.save_every, ckpt))
+    cb = CheckpointCallback(args.save_every, ckpt)
+    if start:
+        model.num_timesteps = start
+        cb.next_save = start + args.save_every
+    model.learn(total_timesteps=args.steps - start, callback=cb, reset_num_timesteps=not start)
     model.save(os.path.join(args.out, "final_model"))
     venv.save(os.path.join(args.out, "final_vecnorm.pkl"))
     print("[done]", flush=True)

@@ -7,3 +7,7 @@ train_dog.log
 make_video.log
 train_terrain.log
 train_terrain_v1.log
+train_terrain_v1_part1.log
+eval_final.log
+eval_house.log
+render_clips.log

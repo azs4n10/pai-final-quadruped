@@ -2,9 +2,9 @@
 坂・階段・凸凹での到達性能と、家・庭でのデモ経路の成功率を測る。
 
   python evaluate_terrain.py              # チェックポイントごと（500 万ステップおき）：runs/terrain_dog/eval.json
-  python evaluate_terrain.py --final      # 採用モデルを地形ごと 50 回：runs/terrain_dog/eval_final.json
+  python evaluate_terrain.py --final      # 採用モデルを難しさ 4 段階×地形ごとに 30 回：runs/terrain_dog/eval_final.json
   python evaluate_terrain.py --house      # 家・庭のデモ経路を各 20 回：runs/terrain_dog/house_eval.json
-評価方法：最も難しい設定（段差 10 cm・最大勾配 約 20°・凸凹 ±3.5 cm）で、3.5 m 先のゴールに 20 秒以内に着けば成功。
+評価方法：地形の難しさを決めて、3.5 m 先のゴールに 20 秒以内に転ばず着けば成功。
 """
 import glob
 import json
@@ -18,6 +18,7 @@ from terrain_dog import TERRAINS, TerrainDogEnv
 
 RUN = os.path.join(HERE, "runs", "terrain_dog")
 MODEL = os.path.join(HERE, "models", "terrain_model.zip")
+LEVELS = [0.25, 0.5, 0.75, 1.0]  # 段差 4・6・8・10 cm、丘の急な所の勾配 約 8・10・12・14°、凸凹 ±1.3・2・2.8・3.5 cm
 HOUSE_ROUTES = [["kitchen", "bedroom"], ["stairs_top", "slope_top", "dock"], ["kids", "living", "dock"]]
 
 
@@ -69,9 +70,11 @@ def main():
         with open(os.path.join(RUN, "house_eval.json"), "w", encoding="utf-8") as f:
             json.dump(evaluate_house(MODEL), f, indent=1, ensure_ascii=False)
         return
-    if "--final" in sys.argv:
-        r = evaluate(MODEL, n=50, seed=900)
-        print(r)
+    if "--final" in sys.argv:  # 難しさを 4 段階に変えて、地形ごとに 30 回ずつ
+        r = {}
+        for lv in LEVELS:
+            r[str(lv)] = evaluate(MODEL, n=30, level=lv, seed=900)
+            print(lv, r[str(lv)], flush=True)
         with open(os.path.join(RUN, "eval_final.json"), "w") as f:
             json.dump(r, f, indent=1)
         return

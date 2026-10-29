@@ -6,7 +6,7 @@ GoalDog と同じロボット・報酬の考え方に、次を加えたもの。
 - カリキュラム：地形の種類ごとに難しさを持ち、その地形でうまく歩けたら難しく、転んだら易しくする
   （段差の高さ・坂の勾配・凸凹の大きさ）
 - 観測：胴体のまわり 35 点の地面の高さ（下向きのレイで測る）と、地面からの胴体の高さ
-  レイは地形・家具などのグループ 0 の形状だけに当たり、ロボット自身や目印（見た目だけの部品）には当たらない
+  レイは地形などのグループ 0・3 の形状だけに当たり、ロボット自身や目印（見た目だけの部品）には当たらない
 """
 import os
 
@@ -61,9 +61,9 @@ def scene_xml(floor, extra="", model="terrain_dog", hf_n=HF_N):
     {extra}
     {robot_xml("robot")}
     <body name="goal" mocap="true" pos="0 0 0">
-      <geom type="cylinder" size="0.6 0.01" pos="0 0 0.01" rgba="1 0.5 0 0.35" class="deco"/>
-      <geom type="cylinder" size="0.03 0.6" pos="0 0 0.6" rgba="1 0.5 0 1" class="deco"/>
-      <geom type="box" size="0.2 0.01 0.12" pos="0.2 0 1.08" rgba="1 0.5 0 1" class="deco"/>
+      <geom type="cylinder" size="0.6 0.01" pos="0 0 0.01" rgba="0.75 0 0 0.3" class="deco"/>
+      <geom type="cylinder" size="0.03 0.6" pos="0 0 0.6" rgba="0.75 0 0 1" class="deco"/>
+      <geom type="box" size="0.2 0.01 0.12" pos="0.2 0 1.08" rgba="0.75 0 0 1" class="deco"/>
     </body>
   </worldbody>
   <actuator>
@@ -99,7 +99,7 @@ def make_terrain(kind, level, rng, n=HF_N):
             k = rng.uniform(0.6, 1.4)
             a = rng.uniform(-np.pi, np.pi)
             h += np.sin(k * (np.cos(a) * x + np.sin(a) * y) + rng.uniform(0, 2 * np.pi))
-        h *= (0.02 + 0.13 * level) / 2  # 勾配はおよそ最大 20° 程度
+        h *= (0.02 + 0.13 * level) / 2  # 急な所（上位 1%）の勾配は 約 8°（level 0.25）〜14°（level 1）
         h += rng.uniform(-1, 1, x.shape) * 0.005
     else:  # 出発地点を中心とした四角い階段（上り＝外に向かって上がる、下り＝外に向かって下がる）
         step = 0.02 + 0.08 * level  # 段差 2〜10 cm
@@ -141,7 +141,7 @@ class TerrainDogEnv(MujocoEnv):
         MujocoEnv.__init__(self, xml_path, 5, observation_space=obs_space, **kwargs)
         self.action_space = gym.spaces.Box(-1.0, 1.0, (12,), np.float32)
         self._hf = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_HFIELD, "terrain")
-        self._ray_group = np.array([1, 0, 0, 0, 0, 0], dtype=np.uint8)
+        self._ray_group = np.array([1, 0, 0, 1, 0, 0], dtype=np.uint8)  # グループ 0 と 3（家の高さマップ）
         self._geomid = np.zeros(1, dtype=np.int32)
         self._foot_ids = [self.model.geom(f"{n}_foot").id for n, _, _ in LEGS]
         self.floor_mode = self._hf >= 0 and xml_path == default_xml  # 学習用：地形を毎回作り直す

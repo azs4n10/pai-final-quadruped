@@ -1,62 +1,72 @@
 # 日本語で指示できる四足歩行ロボット
 
-Physical AI 応用1 最終課題。日本語の指示をローカル LLM が経由地のリストに変換し、強化学習（PPO）で学習した「ゴールまで歩く」方策で、自作の犬型 4 脚ロボット（MuJoCo）がトロットで順に歩いて回る。
+Physical AI 応用1 最終課題。「キッチンで荷物を受け取って、寝室に届けて」のような日本語の指示を出すと、自作の犬型四足歩行ロボットが、家と庭の中を壁や家具を避け、玄関の階段や庭の坂を越えて、指示どおりの順に歩いて回る（MuJoCo 上）。
 
 ```
-日本語の指示 → ローカルLLM（gemma4 / Ollama） → 経由地リスト → ゴール到達方策（PPO） → 犬型4脚ロボット（MuJoCo）
+日本語の指示 → ローカルLLM（gemma4 / Ollama）→ 立ち寄る場所の順番 → 経路計画（A*）→ 経由地 → 歩行方策（PPO）→ 犬型ロボット
 ```
+
+- **歩行方策**：足元 35 点の地面の高さを観測に入れ、平地・凸凹・丘・上り/下り階段を、地形の種類ごとのカリキュラムで学習（PPO・5,000 万ステップ）
+- **LLM**：場所の名前の列挙型（JSON Schema）に出力を制限して、指示を場所の順番に変換
+- **経路計画**：間取り図を格子地図にして A* で壁・家具を避ける経由地を出す。段差・坂は歩行方策が越える
 
 ## ファイル
 | ファイル | 内容 |
 |---|---|
-| `goal_dog.py` | 犬型ロボット（12 関節・位置制御、MJCF を生成）とゴール到達環境 GoalDog。目標速度追従＋歩行クロック（トロット）の報酬 |
-| `goal_ant.py` | ランドマーク（地点）の定義と、比較用のゴール到達環境 GoalAnt（Ant-v5 ベース） |
-| `goal_dog_v1.py` | 比較用：近づく速さを最大化する報酬の犬型環境 |
-| `train_goal.py` | PPO による学習（16 並列、CPU） |
-| `planner.py` | 日本語の指示 → 経由地リスト（Ollama の JSON 構造化出力） |
-| `demo.py` | 指示を実行して録画（字幕・LLM の計画・俯瞰マップを重ねる） |
-| `evaluate.py` | チェックポイントごとの到達率・デモ経路の成功率の評価 |
-| `make_video.py` | 提出動画の組み立て |
-| `plot_compare.py` | 説明資料の図（学習曲線・外観） |
-| `overlay.py` | 動画用の文字・ミニマップ描画 |
-| `narration.py` | 動画のナレーション音声（VOICEVOX ENGINE で合成） |
-| `models/` | 採用モデルと観測正規化の統計（`dog_*`：犬型 2,900 万ステップ。`dog_v1_*`・`final_*` は比較用） |
+| `terrain_dog.py` | 地形（高さマップ）を歩く目標到達環境 TerrainDog（v0：採用モデルの学習に使用、v1：段の角を鋭くし足上げ報酬を加えた試行） |
+| `goal_dog.py` | 犬型ロボット（12 関節・位置制御）の MJCF と、平地の目標到達環境 GoalDog |
+| `house.py` | 家と庭の環境 HouseDog（間取り・家具・庭の階段と坂）と経路計画（A*） |
+| `planner.py` | 日本語の指示 → 場所の順番（Ollama の構造化出力） |
+| `house_demo.py` | 家と庭で指示を実行して録画（指示・LLM の計画・間取り図を重ねる） |
+| `train_goal.py` | PPO による学習（16 並列、CPU。`--resume` で中断した学習を再開） |
+| `evaluate_terrain.py` | 地形×難しさごとの成功率、家と庭の経路ごとの成功率 |
+| `make_video.py` / `narration.py` / `overlay.py` | 提出動画の組み立て、ナレーション（VOICEVOX ENGINE）、スライドと画面の描画 |
+| `make_figures.py` | 説明資料の図 |
+| `demo.py` / `goal_ant.py` / `goal_dog_v1.py` / `evaluate.py` | 平地版（柱を目印に回る）の実行・環境・評価 |
+| `models/` | `terrain_*`：採用モデル（5,000 万ステップ）と観測正規化の統計。`dog_*` などは平地版 |
 
 ## セットアップ
 ```
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-ollama pull gemma4:e4b      # LLM を使う場合（無い場合は色名を拾う簡易変換で動く）
+ollama pull gemma4:e4b      # LLM を使う場合
 ```
 
 ## 使い方
 ```
-# 学習済みモデルで指示を実行（runs/demo.mp4 に録画）
-python demo.py --robot dog --text "黄色い柱に荷物を届けたら帰ってきて"
+# 日本語の指示を実行（runs/house.mp4 に録画）
+python house_demo.py --text "キッチンで荷物を受け取って、寝室に届けて"
 
-# 経由地を直接指定
-python demo.py --robot dog --route red,blue,home
+# 場所を直接指定
+python house_demo.py --route stairs_top,slope_top,dock
 
-# 学習（犬型：3,000 万ステップで約 2.3 時間 / 16 コア CPU）
-python train_goal.py --env GoalDog-v0 --steps 30000000
-python train_goal.py --env GoalAnt-v0 --steps 15000000   # 比較用
+# 学習（約 4.8 時間 / 16 コア CPU）
+python train_goal.py --env TerrainDog-v0 --steps 50000000 --lr-decay
 
 # 評価
-python evaluate.py --robot dog            # 学習曲線（runs/goal_dog/eval.png）
-python evaluate.py --robot dog --routes   # デモ経路ごとの成功率
-python evaluate.py --robot dog --final 29000000   # 採用モデルを 100 回で測り直す
+python evaluate_terrain.py --final    # 地形×難しさごとに 30 回
+python evaluate_terrain.py --house    # 家と庭の 3 経路を各 20 回
 ```
 
-地点：`home`（出発地点、原点）、`red`（6, 3）、`blue`（-4, 6）、`green`（-6, -3）、`yellow`（4, -6）。
+場所：`dock`（充電ステーション、出発地点）、`genkan`（玄関）、`living`（リビング）、`kitchen`（キッチン）、`bedroom`（寝室）、`kids`（子ども部屋）、`stairs_top`（庭の階段の上の高台）、`slope_top`（庭の坂の上の高台）。
 
-## 結果（採用モデル：2,900 万ステップ）
-| 評価 | 結果 |
-|---|---|
-| 4〜6 m 先のゴールに 30 秒以内で到達（100 回） | 100%・平均 6.08 秒・転倒 0% |
-| 赤→青→ホーム（20 回） | 100%・平均 28.2 秒 |
-| 黄→ホーム（20 回） | 100%・平均 16.9 秒 |
-| 全部の柱を一周→ホーム（20 回） | 100%・平均 51.9 秒 |
-| 歩き方（30 秒 × 10 回の平均） | 0.75 m/秒、対角の脚の接地がそろう割合 73% |
+## 結果（採用モデル：5,000 万ステップ）
+3.5 m 先のゴールに 20 秒以内に転ばずに着いた割合（各 30 回）
+
+| 難しさ | 平地 | 凸凹 | 丘 | 上り階段 | 下り階段 |
+|---|---|---|---|---|---|
+| 0.25（段差 4 cm・凸凹 ±1.3 cm・勾配 約 8°） | 100% | 97% | 100% | 100% | 100% |
+| 0.5（段差 6 cm・凸凹 ±2 cm・勾配 約 10°） | 100% | 100% | 100% | 57% | 97% |
+| 0.75（段差 8 cm・凸凹 ±2.8 cm・勾配 約 12°） | 100% | 97% | 97% | 0% | 63% |
+| 1.0（段差 10 cm・凸凹 ±3.5 cm・勾配 約 14°） | 100% | 60% | 100% | 0% | 30% |
+
+家と庭での日本語の指示（各 20 回）
+
+| 指示 | LLM の出力 | 成功 | 転倒 |
+|---|---|---|---|
+| キッチンで荷物を受け取って、寝室に届けて | キッチン → 寝室 | 85% | 10% |
+| 庭の階段を上って高台に行き、そのあと坂の上にも寄ってから充電ステーションに戻って | 階段の高台 → 坂の高台 → 充電ステーション | 75% | 25% |
+| 子ども部屋のおもちゃ箱を見てきて、リビングを通って帰ってきて | 子ども部屋 → リビング → 充電ステーション | 85% | 10% |
 
 ## 使用ツール
 MuJoCo 3.12 / Gymnasium 1.3 / Stable-Baselines3 2.9（PPO）/ Ollama（gemma4:e4b）/ Python 3.12 / VOICEVOX ENGINE（動画のナレーション。音声：VOICEVOX:ずんだもん）

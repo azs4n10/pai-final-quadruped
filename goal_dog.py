@@ -26,8 +26,8 @@ WALK_SPEED = 0.8  # ゴールへ向かう目標速度 [m/s]
 GAIT_PERIOD = 0.5  # トロット 1 周期 [s]
 DIAGONAL = np.array([0, 1, 1, 0])  # FL・HR が組 0、FR・HL が組 1
 
-WHITE, ORANGE, METAL, DARK = "0.94 0.95 0.97 1", "1 0.5 0.05 1", "0.32 0.35 0.39 1", "0.13 0.14 0.16 1"
-LED = "0.2 0.85 1 1"
+WHITE, STRIPE, METAL, DARK = "0.94 0.95 0.97 1", "1 0.85 0.4 1", "0.32 0.35 0.39 1", "0.13 0.14 0.16 1"
+LED = "0.95 0.97 1 1"
 
 
 def leg_xml(name, x, y):
@@ -72,7 +72,7 @@ def robot_xml(childclass=""):
       <freejoint name="root"/>
       <geom name="torso_geom" type="box" size="0.26 0.085 0.06" mass="6" material="shell" rgba="{WHITE}"/>
       <geom type="box" size="0.17 0.087 0.032" pos="0 0 -0.01" class="deco" material="metal" rgba="{DARK}"/>
-      <geom type="box" size="0.262 0.088 0.006" pos="0 0 0.03" class="deco" material="shell" rgba="{ORANGE}"/>
+      <geom type="box" size="0.262 0.088 0.006" pos="0 0 0.03" class="deco" material="shell" rgba="{STRIPE}"/>
       <geom type="box" size="0.2 0.065 0.008" pos="-0.02 0 0.062" class="deco" material="metal" rgba="{DARK}"/>
       <geom type="cylinder" size="0.035 0.01" pos="0.13 0 0.066" class="deco" material="metal" rgba="{DARK}"/>
       <geom type="cylinder" size="0.037 0.004" pos="0.13 0 0.074" class="deco" rgba="{LED}"/>
@@ -114,9 +114,9 @@ def build_xml():
     {robot_xml()}
     {chr(10).join(marks)}
     <body name="goal" mocap="true" pos="0 0 0">
-      <geom type="cylinder" size="0.6 0.01" pos="0 0 0.01" rgba="1 0.5 0 0.35" class="deco"/>
-      <geom type="cylinder" size="0.03 0.6" pos="0 0 0.6" rgba="1 0.5 0 1" class="deco"/>
-      <geom type="box" size="0.2 0.01 0.12" pos="0.2 0 1.08" rgba="1 0.5 0 1" class="deco"/>
+      <geom type="cylinder" size="0.6 0.01" pos="0 0 0.01" rgba="0.75 0 0 0.3" class="deco"/>
+      <geom type="cylinder" size="0.03 0.6" pos="0 0 0.6" rgba="0.75 0 0 1" class="deco"/>
+      <geom type="box" size="0.2 0.01 0.12" pos="0.2 0 1.08" rgba="0.75 0 0 1" class="deco"/>
     </body>
   </worldbody>
   <actuator>

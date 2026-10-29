@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw
 from demo import Policy, compose, vecnorm_for
 from goal_ant import REACH_RADIUS, yaw_of
 from house import FURNITURE, HOME, PLACES, SLOPE, STAIRS, HouseDogEnv, _walls, plan_path
+from overlay import INK, LIGHT, RED, SLATE, YELLOW
 from planner import plan
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +32,7 @@ def house_map(size, trail, path, target, visited):
     h = int(size * (y1 - y0) / (x1 - x0))
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=20, fill=(15, 18, 24, 200))
+    d.rectangle((0, 0, w - 1, h - 1), fill=(255, 255, 255, 235), outline=(*INK, 255))
 
     def px(x, y):
         return ((x - x0) / (x1 - x0) * w, (y1 - y) / (y1 - y0) * h)
@@ -40,28 +41,28 @@ def house_map(size, trail, path, target, visited):
         p, q = px(a, e), px(b, c)
         d.rectangle((p[0], p[1], q[0], q[1]), **kw)
 
-    rect(-6, 6, 0, 8, fill=(70, 62, 52, 255))
+    rect(-6, 6, 0, 8, fill=(*LIGHT, 255))
     for s in (STAIRS, SLOPE):
-        rect(s["x0"], s["x1"], s["y0"], s["y1"], fill=(110, 116, 124, 255))
-    rect(STAIRS["x1"], STAIRS["x1"] + 1.2, STAIRS["y0"], STAIRS["y1"], fill=(90, 96, 104, 255))
-    rect(SLOPE["x0"] - SLOPE["run"], SLOPE["x0"], SLOPE["y0"], SLOPE["y1"], fill=(90, 96, 104, 255))
+        rect(s["x0"], s["x1"], s["y0"], s["y1"], fill=(200, 200, 200, 255))
+    rect(STAIRS["x1"], STAIRS["x1"] + 1.2, STAIRS["y0"], STAIRS["y1"], fill=(225, 225, 225, 255))
+    rect(SLOPE["x0"] - SLOPE["run"], SLOPE["x0"], SLOPE["y0"], SLOPE["y1"], fill=(225, 225, 225, 255))
     for f in FURNITURE:
-        rect(*f[:4], fill=(120, 100, 80, 255))
+        rect(*f[:4], fill=(190, 175, 150, 255))
     for wl in _walls():
-        rect(*wl[:4], fill=(235, 235, 230, 255))
+        rect(*wl[:4], fill=(*INK, 255))
     for k, (_, (x, y)) in PLACES.items():
         cx, cy = px(x, y)
         r = 9
-        col = (90, 200, 120, 255) if k in visited else ((255, 140, 0, 255) if k == target else (200, 205, 215, 200))
-        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=col)
+        col = (*SLATE, 255) if k in visited else ((*YELLOW, 255) if k == target else (255, 255, 255, 255))
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=col, outline=(*INK, 255), width=2)
     if path:
         pts = [px(*p) for p in path]
-        d.line(pts, fill=(120, 200, 255, 200), width=3)
+        d.line(pts, fill=(*SLATE, 200), width=3)
     if len(trail) >= 2:
-        d.line([px(*p) for p in trail], fill=(255, 170, 40, 255), width=4, joint="curve")
+        d.line([px(*p) for p in trail], fill=(*RED, 255), width=4, joint="curve")
     if trail:
         cx, cy = px(*trail[-1])
-        d.ellipse((cx - 8, cy - 8, cx + 8, cy + 8), fill=(255, 255, 255, 255), outline=(255, 140, 0, 255), width=3)
+        d.ellipse((cx - 8, cy - 8, cx + 8, cy + 8), fill=(255, 255, 255, 255), outline=(*RED, 255), width=3)
     return img
 
 
