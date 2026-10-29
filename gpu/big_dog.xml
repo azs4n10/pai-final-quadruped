@@ -1,0 +1,126 @@
+<mujoco model="big_dog_stairs">
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.004" iterations="4" ls_iterations="8"/>
+  <default>
+    <joint damping="3.07" armature="0.108"/>
+    <geom contype="0" conaffinity="0" condim="3" friction="1 0.5 0.5"/>
+    <position kp="230.5" forcerange="-115.2 115.2" ctrlrange="-3 3"/>
+    <default class="deco"><geom contype="0" conaffinity="0" mass="0" group="2"/></default>
+  </default>
+  <asset>
+    <hfield name="terrain" nrow="2001" ncol="1201" size="18.0 30.0 3.2410 0.1"/>
+    <material name="shell"/>
+    <material name="metal"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="hfield" hfield="terrain" pos="18.0 30.0 0" contype="1" conaffinity="1"/>
+    <body name="torso" pos="0 0 0.504">
+      <freejoint name="root"/>
+      <site name="imu" pos="0 0 0"/>
+      <geom name="torso_col" type="capsule" fromto="-0.2800 0 0 0.2800 0 0" size="0.084" mass="0" contype="1" conaffinity="0" group="5" rgba="0 0 0 0"/>
+      <geom name="torso_geom" type="box" size="0.364 0.119 0.084" mass="16.464" material="shell" rgba="0.94 0.95 0.97 1"/>
+      <geom type="box" size="0.238 0.1218 0.0448" pos="0 0 -0.014" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+      <geom type="box" size="0.3668 0.1232 0.0084" pos="0 0 0.042" class="deco" material="shell" rgba="1 0.85 0.4 1"/>
+      <geom type="box" size="0.28 0.091 0.0112" pos="-0.028 0 0.0868" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+      <geom type="cylinder" size="0.049 0.014" pos="0.182 0 0.0924" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+      <geom type="cylinder" size="0.0518 0.0056" pos="0.182 0 0.1036" class="deco" rgba="0.95 0.97 1 1"/>
+      
+      <geom name="head" type="ellipsoid" size="0.112 0.0868 0.0812" pos="0.462 0 0.182" mass="1.372" rgba="0 0 0 0"/>
+      <geom type="box" size="0.07 0.105 0.07" pos="0.42 0 0.035" class="deco" material="shell" rgba="0.94 0.95 0.97 1"/>
+      <geom type="box" size="0.0084 0.0868 0.0448" pos="0.4914 0 0.042" class="deco" material="metal" rgba="0.05 0.05 0.07 1"/>
+      <geom type="cylinder" size="0.0224 0.0056" pos="0.5012 0.049 0.049" euler="0 1.5708 0" class="deco" rgba="0.95 0.97 1 1"/><geom type="cylinder" size="0.0224 0.0056" pos="0.5012 -0.049 0.049" euler="0 1.5708 0" class="deco" rgba="0.95 0.97 1 1"/>
+      <geom type="box" size="0.042 0.042 0.0168" pos="0.42 0 0.112" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+      
+      <body name="FL_hip" pos="0.294 0.091 0">
+        <joint name="FL_abd" axis="1 0 0" range="-0.5 0.5"/>
+        <geom type="cylinder" size="0.0588 0.049" euler="0 1.5708 0" mass="1.372" material="metal" rgba="0.13 0.14 0.16 1"/>
+        <body name="FL_thigh" pos="0 0.084 0">
+          <joint name="FL_hip" axis="0 1 0" range="-1.0 2.4"/>
+          <geom type="cylinder" size="0.063 0.035" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.294" size="0.042" mass="1.9208" material="shell" rgba="0.94 0.95 0.97 1"/>
+          <geom type="box" size="0.0476 0.0308 0.105" pos="0 0.0168 -0.126" class="deco" material="metal" rgba="0.32 0.35 0.39 1"/>
+          <body name="FL_calf" pos="0 0 -0.294">
+            <joint name="FL_knee" axis="0 1 0" range="-2.5 -0.5"/>
+            <geom type="cylinder" size="0.0462 0.042" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+            <geom name="FL_shin" type="capsule" contype="1" conaffinity="0" fromto="0 0 0 0 0 -0.294" size="0.0252" mass="0.686" material="metal" rgba="0.32 0.35 0.39 1"/>
+            <site name="FL_foot_site" pos="0 0 -0.294"/>
+            <geom name="FL_foot" type="sphere" contype="1" conaffinity="0" pos="0 0 -0.294" size="0.0364" mass="0.1372" friction="1.2 0.02 0.01" material="metal" rgba="0.13 0.14 0.16 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="FR_hip" pos="0.294 -0.091 0">
+        <joint name="FR_abd" axis="1 0 0" range="-0.5 0.5"/>
+        <geom type="cylinder" size="0.0588 0.049" euler="0 1.5708 0" mass="1.372" material="metal" rgba="0.13 0.14 0.16 1"/>
+        <body name="FR_thigh" pos="0 -0.084 0">
+          <joint name="FR_hip" axis="0 1 0" range="-1.0 2.4"/>
+          <geom type="cylinder" size="0.063 0.035" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.294" size="0.042" mass="1.9208" material="shell" rgba="0.94 0.95 0.97 1"/>
+          <geom type="box" size="0.0476 0.0308 0.105" pos="0 -0.0168 -0.126" class="deco" material="metal" rgba="0.32 0.35 0.39 1"/>
+          <body name="FR_calf" pos="0 0 -0.294">
+            <joint name="FR_knee" axis="0 1 0" range="-2.5 -0.5"/>
+            <geom type="cylinder" size="0.0462 0.042" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+            <geom name="FR_shin" type="capsule" contype="1" conaffinity="0" fromto="0 0 0 0 0 -0.294" size="0.0252" mass="0.686" material="metal" rgba="0.32 0.35 0.39 1"/>
+            <site name="FR_foot_site" pos="0 0 -0.294"/>
+            <geom name="FR_foot" type="sphere" contype="1" conaffinity="0" pos="0 0 -0.294" size="0.0364" mass="0.1372" friction="1.2 0.02 0.01" material="metal" rgba="0.13 0.14 0.16 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="HL_hip" pos="-0.294 0.091 0">
+        <joint name="HL_abd" axis="1 0 0" range="-0.5 0.5"/>
+        <geom type="cylinder" size="0.0588 0.049" euler="0 1.5708 0" mass="1.372" material="metal" rgba="0.13 0.14 0.16 1"/>
+        <body name="HL_thigh" pos="0 0.084 0">
+          <joint name="HL_hip" axis="0 1 0" range="-1.0 2.4"/>
+          <geom type="cylinder" size="0.063 0.035" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.294" size="0.042" mass="1.9208" material="shell" rgba="0.94 0.95 0.97 1"/>
+          <geom type="box" size="0.0476 0.0308 0.105" pos="0 0.0168 -0.126" class="deco" material="metal" rgba="0.32 0.35 0.39 1"/>
+          <body name="HL_calf" pos="0 0 -0.294">
+            <joint name="HL_knee" axis="0 1 0" range="-2.5 -0.5"/>
+            <geom type="cylinder" size="0.0462 0.042" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+            <geom name="HL_shin" type="capsule" contype="1" conaffinity="0" fromto="0 0 0 0 0 -0.294" size="0.0252" mass="0.686" material="metal" rgba="0.32 0.35 0.39 1"/>
+            <site name="HL_foot_site" pos="0 0 -0.294"/>
+            <geom name="HL_foot" type="sphere" contype="1" conaffinity="0" pos="0 0 -0.294" size="0.0364" mass="0.1372" friction="1.2 0.02 0.01" material="metal" rgba="0.13 0.14 0.16 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="HR_hip" pos="-0.294 -0.091 0">
+        <joint name="HR_abd" axis="1 0 0" range="-0.5 0.5"/>
+        <geom type="cylinder" size="0.0588 0.049" euler="0 1.5708 0" mass="1.372" material="metal" rgba="0.13 0.14 0.16 1"/>
+        <body name="HR_thigh" pos="0 -0.084 0">
+          <joint name="HR_hip" axis="0 1 0" range="-1.0 2.4"/>
+          <geom type="cylinder" size="0.063 0.035" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.294" size="0.042" mass="1.9208" material="shell" rgba="0.94 0.95 0.97 1"/>
+          <geom type="box" size="0.0476 0.0308 0.105" pos="0 -0.0168 -0.126" class="deco" material="metal" rgba="0.32 0.35 0.39 1"/>
+          <body name="HR_calf" pos="0 0 -0.294">
+            <joint name="HR_knee" axis="0 1 0" range="-2.5 -0.5"/>
+            <geom type="cylinder" size="0.0462 0.042" euler="1.5708 0 0" class="deco" material="metal" rgba="0.13 0.14 0.16 1"/>
+            <geom name="HR_shin" type="capsule" contype="1" conaffinity="0" fromto="0 0 0 0 0 -0.294" size="0.0252" mass="0.686" material="metal" rgba="0.32 0.35 0.39 1"/>
+            <site name="HR_foot_site" pos="0 0 -0.294"/>
+            <geom name="HR_foot" type="sphere" contype="1" conaffinity="0" pos="0 0 -0.294" size="0.0364" mass="0.1372" friction="1.2 0.02 0.01" material="metal" rgba="0.13 0.14 0.16 1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+<position name="FL_abd" joint="FL_abd"/>
+<position name="FL_hip" joint="FL_hip"/>
+<position name="FL_knee" joint="FL_knee"/>
+<position name="FR_abd" joint="FR_abd"/>
+<position name="FR_hip" joint="FR_hip"/>
+<position name="FR_knee" joint="FR_knee"/>
+<position name="HL_abd" joint="HL_abd"/>
+<position name="HL_hip" joint="HL_hip"/>
+<position name="HL_knee" joint="HL_knee"/>
+<position name="HR_abd" joint="HR_abd"/>
+<position name="HR_hip" joint="HR_hip"/>
+<position name="HR_knee" joint="HR_knee"/>
+  </actuator>
+  <sensor>
+    <gyro name="gyro" site="imu"/>
+    <velocimeter name="local_linvel" site="imu"/>
+    <framezaxis name="upvector" objtype="site" objname="imu"/>
+  </sensor>
+  <keyframe>
+    <key name="home" qpos="1 1 0.5040 1 0 0 0 0.0000 0.7500 -1.4500 0.0000 0.7500 -1.4500 0.0000 0.7500 -1.4500 0.0000 0.7500 -1.4500" ctrl="0.0000 0.7500 -1.4500 0.0000 0.7500 -1.4500 0.0000 0.7500 -1.4500 0.0000 0.7500 -1.4500"/>
+  </keyframe>
+</mujoco>

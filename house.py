@@ -10,6 +10,7 @@
 import heapq
 import os
 
+import gymnasium as gym
 import numpy as np
 
 from terrain_dog import TerrainDogEnv, scene_xml
@@ -198,6 +199,19 @@ def make_textures():
     # 壁紙：ごく淡い縦じま
     v = 3 * np.sin(x * 2 * np.pi / 32) + 2 * rng.uniform(-1, 1, (n, n))
     save("wall.png", np.stack([243 + v, 240 + v, 232 + v], -1))
+    # 布地：細かい織り目（色は geom の rgba を掛けるので白っぽく）
+    v = 8 * ((x // 2 + y // 2) % 2) + 6 * rng.uniform(-1, 1, (n, n))
+    save("fabric.png", np.stack([236 + v, 236 + v, 236 + v], -1))
+    # ラグ：生成りの地に、縁取りと幾何学模様
+    r = np.maximum(np.abs(x - n / 2), np.abs(y - n / 2))
+    rug = np.stack([226 + 0 * x, 214 + 0 * x, 190 + 0 * x], -1).astype(float)
+    rug[(r > n * 0.42) & (r < n * 0.46)] = (150, 70, 60)
+    rug[(r % 40 < 4) & (r < n * 0.38)] = (120, 130, 150)
+    rug += 6 * rng.uniform(-1, 1, (n, n, 1))
+    save("rug.png", rug)
+    # 家具の木目：明るめの木
+    grain = np.sin(x * 0.12 + 5 * _noise(rng, n, (4, 16), (0.7, 0.3))) * 0.5 + 0.3 * rng.uniform(-1, 1, (n, n))
+    save("wood_furniture.png", np.stack([236 + 12 * grain, 222 + 10 * grain, 205 + 8 * grain], -1))
 
 
 MATERIALS = """<texture name="tex_grass" type="2d" file="tex/grass.png"/>
@@ -368,3 +382,31 @@ def _plan(start, goal):
             out.append(pts[j])
         i = j
     return out
+
+
+class HouseTrainEnv(HouseDogEnv):
+    """家と庭での追加学習用：ランダムな場所から出発し、経路計画の経由地をたどってランダムな場所へ向かうことを繰り返す。"""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.fixed_goal = False
+        self.queue = []
+
+    def start_xy(self):
+        self.place = list(PLACES)[self.np_random.integers(len(PLACES))]
+        return np.array(PLACES[self.place][1]) + self.np_random.uniform(-0.3, 0.3, 2)
+
+    def _sample_goal(self):
+        if not self.queue:  # 次の目的地を選び、経路計画で経由地に分ける
+            others = [k for k in PLACES if k != self.place]
+            self.place = others[self.np_random.integers(len(others))]
+            self.queue = plan_path(self.xy(), PLACES[self.place][1])
+        self.set_goal(self.queue.pop(0))
+
+    def reset_model(self):
+        self.queue = []
+        obs = TerrainDogEnv.reset_model(self)  # 向きはランダム
+        return obs
+
+
+gym.register(id="HouseDog-v0", entry_point=HouseTrainEnv, max_episode_steps=1500)

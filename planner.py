@@ -24,6 +24,8 @@ SYSTEM = """あなたは四足歩行ロボットの経路プランナーです�
 - 「戻る」「帰る」はロボットが出発した {home} を指す。
 - 「全部」「一周」などは、指示に順番がなければ近い順に回る。
 - ロボットは {home} から出発する。最初の地点に {home} は入れない。
+- 荷物を運ぶ指示なら、pickup に荷物を受け取る地点、dropoff に届ける地点を入れる（route にも含める）。
+  荷物を運ばない指示なら、pickup と dropoff は none にする。
 - reply には、ロボットとして何をするかを日本語で短く（30字以内）書く。
 """
 
@@ -43,9 +45,11 @@ def plan_with_llm(instruction, places=None, home="home", model=MODEL, timeout=30
         "type": "object",
         "properties": {
             "route": {"type": "array", "items": {"type": "string", "enum": list(places)}},
+            "pickup": {"type": "string", "enum": list(places) + ["none"]},
+            "dropoff": {"type": "string", "enum": list(places) + ["none"]},
             "reply": {"type": "string"},
         },
-        "required": ["route", "reply"],
+        "required": ["route", "pickup", "dropoff", "reply"],
     }
     body = {
         "model": model,
@@ -65,7 +69,9 @@ def plan_with_llm(instruction, places=None, home="home", model=MODEL, timeout=30
         content = json.loads(r.read())["message"]["content"]
     out = json.loads(content)
     route = [k for k in out.get("route", []) if k in places]
-    return {"route": route, "reply": out.get("reply", ""), "source": model}
+    pick = out.get("pickup") if out.get("pickup") in places else None
+    drop = out.get("dropoff") if out.get("dropoff") in places else None
+    return {"route": route, "pickup": pick, "dropoff": drop, "reply": out.get("reply", ""), "source": model}
 
 
 def plan_with_keywords(instruction):

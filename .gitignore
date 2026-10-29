@@ -11,3 +11,9 @@ train_terrain_v1_part1.log
 eval_final.log
 eval_house.log
 render_clips.log
+train_house_ft.log
+gpu/train.log
+gpu/ckpt/
+gpu/terrain.npy
+train_big_stairs.log
+climb_watch.log

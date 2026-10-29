@@ -21,6 +21,8 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 
 import goal_ant  # noqa: F401  (GoalAnt-v0 を登録)
 import goal_dog  # noqa: F401  (GoalDog-v0 を登録)
+import house  # noqa: F401  (HouseDog-v0 を登録)
+import stairs_cpu  # noqa: F401  (BigStairs-v0 を登録)
 import terrain_dog  # noqa: F401  (TerrainDog-v0 を登録)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -63,24 +65,42 @@ class CheckpointCallback(BaseCallback):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0", "TerrainDog-v0", "TerrainDog-v1"])
+    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0", "TerrainDog-v0", "TerrainDog-v1", "BigStairs-v0"])
     p.add_argument("--steps", type=int, default=20_000_000)
     p.add_argument("--n-envs", type=int, default=16)
     p.add_argument("--save-every", type=int, default=1_000_000)
     p.add_argument("--lr-decay", action="store_true", help="学習率を最後に 0 まで直線的に下げる（最終モデルを安定させる）")
     p.add_argument("--init", default=None, help="続きから学習するモデル（同じ場所の *_vecnorm.pkl も読む）")
+    p.add_argument("--house-envs", type=int, default=0, help="並列環境のうち家と庭（HouseDog-v0）で学習する数")
     p.add_argument("--resume", default=None, help="中断した学習をチェックポイント（ckpt/model_*.zip）から再開する")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--out", default=None, help="既定は runs/goal_ant・runs/goal_dog・runs/terrain_dog")
     args = p.parse_args()
 
     if args.out is None:
-        args.out = os.path.join(HERE, "runs", {"GoalAnt-v0": "goal_ant", "GoalDog-v0": "goal_dog", "TerrainDog-v0": "terrain_dog", "TerrainDog-v1": "terrain_dog_v1"}[args.env])
+        args.out = os.path.join(HERE, "runs", {"GoalAnt-v0": "goal_ant", "GoalDog-v0": "goal_dog", "TerrainDog-v0": "terrain_dog", "TerrainDog-v1": "terrain_dog_v1", "BigStairs-v0": "big_stairs"}[args.env])
     torch.set_num_threads(4)
     ckpt = os.path.join(args.out, "ckpt")
     os.makedirs(ckpt, exist_ok=True)
 
-    venv = make_vec_env(args.env, n_envs=args.n_envs, seed=0, vec_env_cls=SubprocVecEnv)
+    if args.env == "BigStairs-v0":  # 1 つの子プロセスで複数の環境（train_big.py から起動する）
+        from vec_workers import BatchedSubprocVecEnv
+
+        venv = BatchedSubprocVecEnv("BigStairs-v0", args.n_envs, min(16, args.n_envs), "stairs_cpu")
+    elif args.house_envs:  # 家と庭と、元の地形を混ぜて学習する（元の地形での歩き方を忘れないように）
+        from stable_baselines3.common.monitor import Monitor
+        import gymnasium as gym
+
+        def maker(env_id, rank):
+            def f():
+                e = Monitor(gym.make(env_id))
+                e.reset(seed=rank)
+                return e
+            return f
+        ids = ["HouseDog-v0"] * args.house_envs + [args.env] * (args.n_envs - args.house_envs)
+        venv = SubprocVecEnv([maker(e, i) for i, e in enumerate(ids)])
+    else:
+        venv = make_vec_env(args.env, n_envs=args.n_envs, seed=0, vec_env_cls=SubprocVecEnv)
     start = 0
     if args.resume:  # 中断前と同じ学習率の予定・ステップ数のまま続ける
         args.init = args.resume
@@ -94,20 +114,23 @@ def main():
         venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
     lr = (lambda progress_remaining: args.lr * progress_remaining) if args.lr_decay else args.lr
 
+    big = args.env == "BigStairs-v0"
     model = PPO(
         "MlpPolicy",
         venv,
         n_steps=512,
-        batch_size=2048,
-        n_epochs=10,
+        batch_size=4096 if big else 2048,
+        n_epochs=5 if big else 10,
         learning_rate=lr,
         gamma=0.99,
         gae_lambda=0.95,
         clip_range=0.2,
         ent_coef=0.0,
         max_grad_norm=0.5,
-        policy_kwargs=dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.5 if args.env == "GoalAnt-v0" else -0.7),
-        device="cpu",
+        policy_kwargs=(dict(net_arch=dict(pi=[512, 256, 128], vf=[512, 256, 128]), log_std_init=-0.5)
+                       if args.env == "BigStairs-v0" else
+                       dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.5 if args.env == "GoalAnt-v0" else -0.7)),
+        device="cuda" if big and torch.cuda.is_available() else "cpu",  # 大型版はネットが大きいので更新を GPU で
         verbose=0,
         seed=0,
     )
