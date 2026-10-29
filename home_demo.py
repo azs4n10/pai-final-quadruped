@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import home
-from big_dog import BigDog, follow_command, load_policy
+from big_dog import BigDog, follow_command, stairs_command, load_policy
 from demo import compose
 from overlay import INK, LIGHT, RED, SLATE, YELLOW, font
 
@@ -178,7 +178,10 @@ def run(route, *, pickup=None, dropoff=None, render=True, instruction="", reply=
             last = wi == len(wps) - 1
             sc.set_goal(wx, wy, wl)
             while True:
-                cmd = follow_command(sc.d.qpos[:2], sc.dog.yaw(), (wx, wy), v_max=0.7)
+                if wl != sc.level() or abs(sc.d.qpos[1] - (home.SY0 + home.SY1) / 2) < (home.SY1 - home.SY0) / 2 and abs(sc.d.qpos[0] - home.STAIR_X) < 0.8:
+                    cmd = stairs_command(sc.d.qpos[:2], sc.dog.yaw(), home.STAIR_X, 1 if wl == 2 else -1)  # 階段の上り下り
+                else:
+                    cmd = follow_command(sc.d.qpos[:2], sc.dog.yaw(), (wx, wy), v_max=0.7)
                 sc.dog.step(cmd)
                 sc.update_doors(DT)
                 t += DT

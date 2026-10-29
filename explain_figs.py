@@ -107,7 +107,8 @@ def robot_drawing():
     ax = axes[0]
     ax.set_title("横から見た図", fontsize=14)
     ax.add_patch(patches.Rectangle((-L, z - H), 2 * L, 2 * H, fc=LIGHT, ec=INK, lw=1.5))
-    ax.add_patch(patches.Rectangle((L - 0.07 * s, z - 0.03), 0.13 * s, 0.11 * s, fc=LIGHT, ec=INK, lw=1.2))
+    ax.add_patch(patches.Rectangle((L + 0.01, z + 0.02), 0.11 * s, 0.09 * s, fc=LIGHT, ec=INK, lw=1.2))  # 頭（センサー）
+    ax.text(L + 0.01 + 0.055 * s, z + 0.02 + 0.045 * s, "頭", ha="center", va="center", fontsize=11)
     for x in (hip_x, -hip_x):
         k = np.array([x + thigh * np.sin(stand[0]), z - thigh * np.cos(stand[0])])
         f = k + shin * np.array([np.sin(stand[0] + stand[1]), -np.cos(stand[0] + stand[1])])
@@ -122,11 +123,11 @@ def robot_drawing():
         ax.text((p[0] + q[0]) / 2 + off[0], (p[1] + q[1]) / 2 + off[1], text, color=RED, ha="center", fontsize=12)
 
     dim(ax, (-L, z + H + 0.12), (L, z + H + 0.12), f"胴体 {2 * L:.2f} m", (0, 0.02))
-    dim(ax, (L + 0.22, 0), (L + 0.22, z), f"胴体の高さ\n{z:.2f} m", (0.13, -0.05))
-    ax.text(hip_x + 0.11, z - 0.13, f"太もも {thigh:.2f} m", fontsize=11)
-    ax.text(hip_x + 0.13, z - 0.36, f"すね {shin:.2f} m", fontsize=11)
-    ax.set_xlim(-0.55, 0.85)
-    ax.set_ylim(-0.05, 0.85)
+    dim(ax, (L + 0.35, 0), (L + 0.35, z), f"胴体の高さ\n{z:.2f} m", (0.15, -0.05))
+    ax.text(-hip_x - 0.06, z - 0.17, f"太もも {thigh:.2f} m", fontsize=11, ha="right")
+    ax.text(-hip_x + 0.08, z - 0.40, f"すね {shin:.2f} m", fontsize=11, ha="left")
+    ax.set_xlim(-0.75, 0.95)
+    ax.set_ylim(-0.05, 0.80)
     ax.set_aspect("equal")
     ax.axis("off")
     ax = axes[1]
@@ -142,8 +143,8 @@ def robot_drawing():
     ax.set_ylim(-0.45, 0.35)
     ax.set_aspect("equal")
     ax.axis("off")
-    fig.tight_layout()
-    fig.savefig(os.path.join(OUT, "robot_drawing.png"), dpi=130)
+    fig.tight_layout(pad=1.5)
+    fig.savefig(os.path.join(OUT, "robot_drawing.png"), dpi=130, bbox_inches="tight", pad_inches=0.2)
 
 
 def mjcf_code():

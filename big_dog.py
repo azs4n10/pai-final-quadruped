@@ -13,7 +13,7 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 POLICY = os.path.join(HERE, "models", "big_dog_policy.npz")
 BASE_H = 0.46
-ACTION_SCALE = 0.5
+ACTION_SCALE = 0.8  # stairs_cpu.py と同じ
 SCAN_X = np.linspace(-0.45, 0.9, 10)
 SCAN_Y = np.linspace(-0.4, 0.4, 5)
 SCAN = np.array([(x, y) for x in SCAN_X for y in SCAN_Y])
@@ -124,3 +124,14 @@ def follow_command(xy, yaw, target, v_max=0.8):
     wz = float(np.clip(1.5 * err, -0.8, 0.8))
     vx = float(np.clip(np.linalg.norm(d), 0.0, v_max) * max(np.cos(err), 0.0) ** 2)
     return np.array([vx, 0.0, wz])
+
+
+def stairs_command(xy, yaw, cx, direction, v=0.8):
+    """階段の上り下り用の指令。中心線 x=cx の 0.7 m 先を目指して向きを保ち、横のずれは横方向の速度でも直す。
+    勢いがある方が段に足を掛けやすいので、平地より速め（0.8 m/s）で進む。direction は +1（上り）／-1（下り）。"""
+    target = np.array([cx, xy[1] + 0.7 * direction])
+    d = target - xy
+    err = (np.arctan2(d[1], d[0]) - yaw + np.pi) % (2 * np.pi) - np.pi
+    wz = float(np.clip(2.0 * err, -0.8, 0.8))
+    vy = float(np.clip(np.sin(yaw) * (xy[0] - cx), -0.3, 0.3))  # 世界の x 方向のずれを、体の横方向の速度に直す
+    return np.array([v * max(np.cos(err), 0.0) ** 2, vy, wz])

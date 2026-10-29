@@ -12,12 +12,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 XML = os.path.join(HERE, "gpu", "big_dog.xml")
 TERRAIN = os.path.join(HERE, "gpu", "terrain.npy")
 TILE, N_LEVEL, N_COL, RES = 6.0, 10, 6, 0.03
-BASE_H, FOOT_R, ACTION_SCALE = 0.46, 0.026 * 1.4, 0.5
+BASE_H, FOOT_R, ACTION_SCALE = 0.46, 0.026 * 1.4, 0.8  # 0.5 では膝が -1.95 rad までしか曲がらず、足を 14 cm 以上の段に上げられない
 SCAN = np.array([(x, y) for x in np.linspace(-0.45, 0.9, 10) for y in np.linspace(-0.4, 0.4, 5)])
 SCALES = dict(tracking_lin_vel=1.5, tracking_ang_vel=0.75, lin_vel_z=-0.2, ang_vel_xy=-0.05, orientation=-2.0, dof_pos_limits=-1.0,
               pose=0.2, termination=-1.0, stand_still=-0.5, torques=-0.00005, action_rate=-0.01, energy=-0.0003,
               feet_clearance=-1.0, feet_slip=-0.1, feet_air_time=0.2, body_height=-5.0)
 MAX_FOOT_H, SIGMA, DT, EP_LEN = 0.15, 0.25, 0.02, 1000
+COL_P = np.array([0.25, 0.25, 0.1, 0.1, 0.15, 0.15])  # 地形の列の選ばれやすさ（上り階段を多めに練習する）
 
 
 class BigStairsEnv(gym.Env):
@@ -84,7 +85,7 @@ class BigStairsEnv(gym.Env):
             else:
                 self.level = int(np.clip(self.level + up - down, 0, N_LEVEL - 1))
         mujoco.mj_resetDataKeyframe(self.m, self.d, 0)
-        col = self.np_random.integers(0, N_COL)
+        col = self.np_random.choice(N_COL, p=COL_P)
         xy = (np.array([col, self.level]) + 0.5) * TILE + self.np_random.uniform(-0.3, 0.3, 2)
         yaw = self.np_random.uniform(-np.pi, np.pi)
         self.d.qpos[0:2] = xy

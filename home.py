@@ -26,7 +26,8 @@ WALL_1F, WALL_2F, WALL_IN = FH - SLAB, 0.9, 1.0  # 2 階の壁と 1 階の内壁
 T = 0.05
 X0, X1, Y0, Y1 = -6.0, 6.0, 0.0, 8.0
 # 階段（玄関ホールの西側、y が増える向きに上る）
-SX0, SX1, SY0 = -1.45, -0.35, 2.0
+SX0, SX1, SY0 = -1.85, -0.35, 2.0  # 階段の幅 1.5 m（横にずれても壁に当たりにくい幅）
+WX = SX0 - 0.05  # 階段の西側の壁（書斎・和室・書庫との境）
 SY1 = SY0 + N_STEPS * TREAD  # 階段の上端（2 階の床の縁）
 
 # 場所：キー -> (日本語名, 階, (x, y))
@@ -63,13 +64,13 @@ def _walls():
     # 1 階：外壁は 2 階の床まで（玄関扉は閉じた状態で描く）。内壁は中が見えるよう低め
     hwall(Y0, X0, X1, a, b), hwall(Y1, X0, X1, a, b), vwall(X0, Y0, Y1, a, b), vwall(X1, Y0, Y1, a, b)
     b = WALL_IN
-    # 玄関ホール（x∈[-1.5, 1.5]）と LDK の間：出入口 y∈[2.8, 4.2]
+    # 玄関ホール（x∈[WX, 1.5]）と LDK の間：出入口 y∈[2.8, 4.2]
     vwall(1.5, Y0, 2.8, a, b), vwall(1.5, 4.2, Y1, a, b)
     # 玄関ホールと西の部屋の間（階段の脇）：書斎の出入口 y∈[0.2, 1.4]、和室の出入口 y∈[6.6, 7.8]
-    vwall(-1.5, 1.4, 6.6, a, b)
-    vwall(-1.5, 7.8, Y1, a, b)
+    vwall(WX, 1.4, 6.6, a, b)
+    vwall(WX, 7.8, Y1, a, b)
     # 書斎と和室の間
-    hwall(4.0, X0, -1.5, a, b)
+    hwall(4.0, X0, WX, a, b)
     # LDK の中：リビングとダイニングの間に腰壁は置かない（ひと続き）
     c, d = FH, FH + WALL_2F
     # 2 階：外壁
@@ -78,8 +79,8 @@ def _walls():
     vwall(1.5, Y0, 2.4, c, d), vwall(1.5, 3.6, 6.2, c, d), vwall(1.5, 7.4, Y1, c, d)
     hwall(4.0, 1.5, X1, c, d)  # 子ども部屋と寝室の間
     # 2 階の西（書庫）：出入口 y∈[0.3, 1.5]
-    vwall(-1.5, Y0, 0.3, c, d), vwall(-1.5, 1.5, SY0 - 0.1, c, d)
-    vwall(-1.5, SY1 + 0.1, Y1, c, d)
+    vwall(WX, Y0, 0.3, c, d), vwall(WX, 1.5, SY0 - 0.1, c, d)
+    vwall(WX, SY1 + 0.1, Y1, c, d)
     return w
 
 
@@ -145,11 +146,11 @@ def _furniture():
 # (名前, 階, 壁の位置 x, 開口の始まり y0, 開口の終わり y1, 材質)。扉は y0 側の壁の中へ引き込まれる
 DOORS = [
     ("ldk", 1, 1.5, 2.8, 4.2, "MatWoodFurniture"),
-    ("study", 1, -1.5, 0.0, 1.4, "MatWoodFurniture"),
-    ("washitsu", 1, -1.5, 6.6, 7.8, "MatShoji"),
+    ("study", 1, WX, 0.0, 1.4, "MatWoodFurniture"),
+    ("washitsu", 1, WX, 6.6, 7.8, "MatShoji"),
     ("kids", 2, 1.5, 2.4, 3.6, "MatWoodFurniture"),
     ("bedroom", 2, 1.5, 6.2, 7.4, "MatWoodFurniture"),
-    ("library", 2, -1.5, 0.3, 1.5, "MatWoodFurniture"),
+    ("library", 2, WX, 0.3, 1.5, "MatWoodFurniture"),
 ]
 DOOR_H = 0.95  # 扉の高さ（中が見えるよう内壁と同じくらい）
 

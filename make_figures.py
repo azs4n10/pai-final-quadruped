@@ -132,3 +132,98 @@ if __name__ == "__main__":
     house_map()
     if os.path.exists(os.path.join(RUN, "eval_final.json")):
         terrain_eval()
+
+
+def big_robot():
+    """大型版の犬型ロボットを、斜め前と真横から写す（report/big_robot.jpg）。床だけの撮影用の場所で撮る。"""
+    import re
+
+    import mujoco
+
+    from train_scene import render_xml
+
+    src = open(render_xml(), encoding="utf-8").read()
+    src = re.sub(r'<geom name="floor" type="hfield"[^>]*/>',
+                 '<geom name="floor" type="plane" size="20 20 1" material="ground" contype="1" conaffinity="1"/>', src)
+    src = re.sub(r'<hfield[^>]*/>', '', src)
+    m = mujoco.MjModel.from_xml_string(src)
+    d = mujoco.MjData(m)
+    mujoco.mj_resetDataKeyframe(m, d, 0)
+    m.vis.map.shadowclip = 0.15  # 影を細かく（床の縞模様を防ぐ）
+    d.qpos[0:3] = [0, 0, 0.47]
+    mujoco.mj_forward(m, d)
+    r = mujoco.Renderer(m, 600, 960)
+    cam = mujoco.MjvCamera()
+    tiles = []
+    for az, el in [(150, -15), (90, -3)]:
+        cam.lookat[:] = [0, 0, 0.33]
+        cam.distance, cam.azimuth, cam.elevation = 1.8, az, el
+        r.update_scene(d, cam)
+        tiles.append(Image.fromarray(r.render()))
+    img = Image.new("RGB", (960 * 2 + 20, 600), "white")
+    for i, t in enumerate(tiles):
+        img.paste(t, (980 * i, 0))
+    img.save(os.path.join(OUT, "big_robot.jpg"), quality=90)
+
+
+def home_views():
+    """家の 1 階・2 階を斜め上から写す（report/home_1f.jpg・home_2f.jpg）。1 階は 2 階を外して写す。"""
+    import mujoco
+
+    import home
+    from home_demo import Scene
+
+    sc = Scene(render=True, size=(1280, 820), policy_path=os.path.join(HERE, "runs", "big_stairs", "ckpt", "model_010000000.zip"))
+    sc.m.vis.map.shadowclip = 0.3
+    sc.d.mocap_pos[sc.goal] = sc.d.mocap_pos[sc.parcel] = [80, 80, -20]  # 目標の印と荷物は写さない
+    mujoco.mj_forward(sc.m, sc.d)
+    for lv, name in ((1, "home_1f.jpg"), (2, "home_2f.jpg")):
+        sc.m.geom_rgba[:] = sc.rgba0
+        sc.m.geom_rgba[sc.cargo, 3] = 0.0
+        if lv == 1:
+            sc.m.geom_rgba[sc.upper, 3] = 0.0
+            sc.m.geom_rgba[sc.upper_doors, 3] = 0.0
+        cam = mujoco.MjvCamera()
+        cam.lookat[:] = [(home.X0 + home.X1) / 2, (home.Y0 + home.Y1) / 2 - 0.3, home.door_base_z(lv)]
+        cam.distance, cam.azimuth, cam.elevation = 14.5, 90, -62
+        sc.renderer.update_scene(sc.d, cam, sc.opt)
+        Image.fromarray(sc.renderer.render()).save(os.path.join(OUT, name), quality=90)
+
+
+def learning():
+    """大型版の学習の経過：練習場の難しさ（段差の高さ）と、家の階段を上り切れた割合（report/learning.png）。"""
+    import json
+
+    from gpu.make_assets import STEP_MAX, STEP_MIN
+
+    steps, levels = [], []
+    for line in open(os.path.join(HERE, "train_big_stairs.log"), encoding="utf-8", errors="ignore"):
+        m = re.search(r"\[ckpt\] step=(\d+) .*level stairs=([\d.]+)", line)
+        if m:
+            steps.append(int(m.group(1)) / 1e6)
+            levels.append(float(m.group(2)))
+    fig, ax = plt.subplots(figsize=(8, 3.6))
+    ax.plot(steps, [100 * (STEP_MIN + (STEP_MAX - STEP_MIN) * lv / 9) for lv in levels], color=SLATE, lw=2,
+            label="練習場で挑戦中の段差の高さ（平均）")
+    ax.axhline(15, color=GRAY, ls="--", lw=1.5)
+    ax.text(steps[0] if steps else 0, 15.3, "家の階段（15 cm）", color="#555555", fontsize=10)
+    ax.set_xlabel("学習ステップ数 [百万]")
+    ax.set_ylabel("段差 [cm]")
+    ax.set_ylim(4, 19)
+    ax.grid(alpha=0.3)
+    path = os.path.join(HERE, "runs", "big_stairs", "climb.json")
+    if os.path.exists(path):
+        climb = json.load(open(path))
+        xs = sorted(int(k) for k in climb)
+        ax2 = ax.twinx()
+        ax2.plot([x / 1e6 for x in xs], [100 * climb[str(x)]["success"] for x in xs], "o-", color=RED, lw=2,
+                 label="家の階段（14 段）を上り切れた割合")
+        ax2.set_ylabel("成功率 [%]")
+        ax2.set_ylim(-3, 103)
+        h1, l1 = ax.get_legend_handles_labels()
+        h2, l2 = ax2.get_legend_handles_labels()
+        ax.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=9)
+    else:
+        ax.legend(loc="upper left", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUT, "learning.png"), dpi=150)

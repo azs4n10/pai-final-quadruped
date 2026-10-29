@@ -14,11 +14,11 @@ import mujoco
 import numpy as np
 
 import home
-from big_dog import BigDog, follow_command, load_policy
+from big_dog import BigDog, load_policy, stairs_command
 from stairs_cpu import N_COL, TILE, BigStairsEnv
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUN = os.path.join(HERE, "runs", "big_stairs")
+RUN = os.path.join(HERE, "runs", "big_stairs2")
 MODEL = os.path.join(HERE, "models", "big_dog_model.zip")
 HOME_ROUTES = [  # (経路, 受け取る場所, 届ける場所)
     (["dock", "bedroom", "dock"], "dock", "bedroom"),
@@ -82,7 +82,7 @@ def climb_home(policy, n=10, limit=40.0):
         dog = BigDog(m, d, policy)
         t = 0.0
         while t < limit:
-            dog.step(follow_command(d.qpos[:2], dog.yaw(), home.STAIR_TOP, v_max=0.6))
+            dog.step(stairs_command(d.qpos[:2], dog.yaw(), home.STAIR_X, 1))
             t += 0.02
             if dog.fallen():
                 fell += 1
