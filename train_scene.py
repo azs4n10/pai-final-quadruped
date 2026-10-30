@@ -63,7 +63,7 @@ def main():
     xml = render_xml()
     sims = []
     for col, kind in enumerate(COLUMNS):
-        env = BigStairsEnv()
+        env = BigStairsEnv(gait=len(policy.mean) == 100)
         env.m = mujoco.MjModel.from_xml_path(xml)
         env.m.hfield_data[:] = (env.H / env.m.hfield_size[0, 2]).ravel()
         env.d = mujoco.MjData(env.m)

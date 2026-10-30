@@ -93,18 +93,48 @@ def slide_base(size, title="", page=None):
     return img, d
 
 
+# 折り返しの単位：英数字と単位（「15 cm」「0.8 m/s」など）は途中で切らず、句読点・閉じ括弧は前に、開き括弧は後ろに付ける
+_TOKEN = re.compile(r"[（「『【]*(?:[A-Za-z0-9.,%°±+\-/·:*~^]+(?: (?:m/秒|m/s|N·m|cm|mm|ms|m|kg|rad|Hz|s|GB|B|%|°)(?![A-Za-z]))?|.)[、。，．）」』】！？・ー]*")
+
+
+def _tokens(text):
+    return _TOKEN.findall(text)
+
+
+_BREAK_AFTER = set("、。，．）」』】をにではがもへと ")
+
+
+def _good_break(toks, n):
+    """先頭 n 個までなら 1 行に収まるとき、語の途中で切らないよう、句読点や助詞の後ろで切れる位置（n 以下）を返す。"""
+    for k in range(n, max(1, (n * 3 + 4) // 5) - 1, -1):
+        if toks[k - 1][-1] in _BREAK_AFTER:
+            return k
+    return n
+
+
 def _wrap(d, text, fnt, width):
-    """全角の文章を幅 width に収まるよう折り返す。"""
+    """文章を幅 width に収まるよう、_TOKEN の切れ目（できれば句読点や助詞の後ろ）で折り返す。"""
     lines = []
     for para in text.split("\n"):
-        cur = ""
-        for ch in para:
-            if d.textlength(cur + ch, font=fnt) > width:
-                lines.append(cur)
-                cur = ""
-            cur += ch
-        lines.append(cur)
+        toks = _tokens(para)
+        while toks:
+            n = len(toks)
+            while n > 1 and d.textlength("".join(toks[:n]).strip(), font=fnt) > width:
+                n -= 1
+            if n < len(toks):
+                n = _good_break(toks, n)
+            lines.append("".join(toks[:n]).strip())
+            toks = toks[n:]
+        if not lines or para == "":
+            lines.append("")
     return lines
+
+
+def _fit(d, lines, size, width, weight="regular", min_size=16):
+    """どの行も幅 width に収まる文字の大きさ（size から小さくしていく）。"""
+    while size > min_size and max(d.textlength(ln, font=font(size, weight)) for ln in lines) > width:
+        size -= 1
+    return size
 
 
 def section_card(size, title, subtitle="", page=None):
@@ -113,8 +143,10 @@ def section_card(size, title, subtitle="", page=None):
     w, h = size
     d.text((w / 2, h / 2 - 40), title, font=font(84, "bold"), fill=INK, anchor="mm")
     d.line((w / 2 - 500, h / 2 + 30, w / 2 + 500, h / 2 + 30), fill=INK, width=4)
-    if subtitle:
-        d.text((w / 2, h / 2 + 90), subtitle, font=font(38), fill=INK, anchor="mm")
+    if subtitle:  # 画面の幅に収まるよう折り返し、各行を中央にそろえる
+        lines = _wrap(d, subtitle, font(38), w - 360)
+        for i, ln in enumerate(lines):
+            d.text((w / 2, h / 2 + 90 + 56 * i), ln, font=font(38), fill=INK, anchor="mm")
     return np.asarray(img)
 
 
@@ -135,10 +167,10 @@ def pairs_card(size, title, lead, pairs, heads=("課題", "選んだ方法"), pa
         d.rectangle((90, top, 140, top + bh), fill=SLATE)
         d.text((115, top + bh / 2), str(i + 1), font=font(34, "bold"), fill=(255, 255, 255), anchor="mm")
         d.rectangle((lx0, top, lx1, top + bh), fill=LIGHT, outline=INK, width=2)
-        d.multiline_text(((lx0 + lx1) / 2, top + bh / 2), left, font=font(36), fill=INK, anchor="mm", align="center", spacing=10)
+        d.multiline_text(((lx0 + lx1) / 2, top + bh / 2), left, font=font(_fit(d, left.split("\n"), 36, lx1 - lx0 - 40)), fill=INK, anchor="mm", align="center", spacing=10)
         d.text(((lx1 + rx0) / 2, top + bh / 2), "→", font=font(56, "bold"), fill=INK, anchor="mm")
         d.rectangle((rx0, top, rx1, top + bh), fill=YELLOW, outline=INK, width=2)
-        d.multiline_text(((rx0 + rx1) / 2, top + bh / 2), right, font=font(38, "bold"), fill=INK, anchor="mm", align="center", spacing=10)
+        d.multiline_text(((rx0 + rx1) / 2, top + bh / 2), right, font=font(_fit(d, right.split("\n"), 38, rx1 - rx0 - 40, "bold"), "bold"), fill=INK, anchor="mm", align="center", spacing=10)
     return np.asarray(img)
 
 
@@ -152,7 +184,8 @@ def system_card(size, robot_img, boxes, rows, page=None):
     for head, body in boxes:
         d.rectangle((x, y, x + bw, y + bh), fill=YELLOW, outline=INK, width=2)
         d.text((x + bw / 2, y + 60), head, font=font(38, "bold"), fill=INK, anchor="mm")
-        d.multiline_text((x + bw / 2, y + 185), body, font=font(29), fill=INK, anchor="mm", align="center", spacing=10)
+        fs = _fit(d, body.split("\n"), 29, bw - 28)
+        d.multiline_text((x + bw / 2, y + 185), body, font=font(fs), fill=INK, anchor="mm", align="center", spacing=10)
         x += bw
         d.line((x + 8, y + bh / 2, x + gap - 14, y + bh / 2), fill=INK, width=4)
         d.polygon([(x + gap - 8, y + bh / 2), (x + gap - 24, y + bh / 2 - 10), (x + gap - 24, y + bh / 2 + 10)], fill=INK)
@@ -165,7 +198,7 @@ def system_card(size, robot_img, boxes, rows, page=None):
         d.rectangle((90, y, w - 90, y + 76), fill=(255, 255, 255), outline=INK, width=2)
         d.rectangle((90, y, 300, y + 76), fill=GRAY, outline=INK, width=2)
         d.text((195, y + 38), head, font=font(32, "bold"), fill=INK, anchor="mm")
-        d.text((330, y + 38), body, font=font(32), fill=INK, anchor="lm")
+        d.text((330, y + 38), body, font=font(_fit(d, [body], 32, w - 90 - 330 - 24)), fill=INK, anchor="lm")
         y += 96
     return np.asarray(img)
 
@@ -182,7 +215,7 @@ def points_card(size, title, lead, items, page=None):
     for i, (head, body) in enumerate(items):
         d.rectangle((90, y, 150, y + 60), fill=SLATE)
         d.text((120, y + 30), str(i + 1), font=font(34, "bold"), fill=(255, 255, 255), anchor="mm")
-        d.text((180, y + 30), head, font=font(40, "bold"), fill=INK, anchor="lm")
+        d.text((180, y + 30), head, font=font(_fit(d, [head], 40, w - 270, "bold"), "bold"), fill=INK, anchor="lm")
         _rich(d, (180, y + 82), body, font(32), w - 270)
         y += step
     return np.asarray(img)
@@ -229,17 +262,22 @@ def _rich(d, xy, text, fnt, width):
         x = x0
         for i, seg in enumerate(re.split("[【】]", line)):
             color = RED if i % 2 else INK
-            while seg:
-                n = len(seg)  # 行の残りに収まる最長の部分
-                while n > 1 and x + _textlength(d, seg[:n], fnt) > x0 + width:
+            toks = _tokens(seg)
+            while toks:
+                n = len(toks)  # 行の残りに収まる最長の部分（_TOKEN の切れ目で切る）
+                while n > 1 and x + _textlength(d, "".join(toks[:n]), fnt) > x0 + width:
                     n -= 1
-                if x > x0 and x + _textlength(d, seg[:n], fnt) > x0 + width:
+                if x > x0 and x + _textlength(d, "".join(toks[:n]), fnt) > x0 + width:
                     x, y = x0, y + fnt.size * 1.5
+                    toks[0] = toks[0].lstrip()
                     continue
-                x = _draw(d, (x, y), seg[:n], fnt, color)
-                seg = seg[n:]
-                if seg:
+                if n < len(toks):
+                    n = _good_break(toks, n)
+                x = _draw(d, (x, y), "".join(toks[:n]), fnt, color)
+                toks = toks[n:]
+                if toks:
                     x, y = x0, y + fnt.size * 1.5
+                    toks[0] = toks[0].lstrip()
         y += fnt.size * 1.5
 
 
@@ -292,11 +330,23 @@ def _code_box(d, box, title, lines, size=24):
     d.rectangle(box, fill=(248, 248, 248), outline=INK, width=2)
     d.rectangle((x0, y0, x1, y0 + 46), fill=GRAY, outline=INK, width=2)
     d.text((x0 + 16, y0 + 23), title, font=font(26, "bold"), fill=INK, anchor="lm")
-    mono = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", size) if os.path.exists("C:/Windows/Fonts/consola.ttf") else font(size)
+    def mono_font(s):
+        return ImageFont.truetype("C:/Windows/Fonts/consola.ttf", s) if os.path.exists("C:/Windows/Fonts/consola.ttf") else font(s)
+
+    def runs(ln, s):  # 英数字は等幅、日本語は本文の字体で描く（字下げや「"key":」の位置をそろえる）
+        return [(r, mono_font(s) if ord(r[0]) < 128 else font(s)) for r in re.findall(r"[\x00-\x7f]+|[^\x00-\x7f]+", ln)]
+
+    def width(ln, s):
+        return sum(d.textlength(r, font=f) for r, f in runs(ln, s))
+
+    while size > 14 and max(width(ln, size) for ln in lines) > x1 - x0 - 32:
+        size -= 1
     y = y0 + 62
     for ln in lines:
-        f = font(size) if any(ord(c) > 127 for c in ln) else mono
-        d.text((x0 + 16, y), ln, font=f, fill=INK)
+        x = x0 + 16
+        for r, f in runs(ln, size):
+            d.text((x, y), r, font=f, fill=INK)
+            x += d.textlength(r, font=f)
         y += size * 1.45
 
 
@@ -304,14 +354,14 @@ def llm_card(size, instruction, prompt_lines, schema_lines, output_lines, notes,
     """ローカル LLM の構成：指示 → プロンプト＋JSON Schema → LLM → 出力 JSON。"""
     img, d = slide_base(size, "ローカル LLM の構成", page=page)
     w, _ = size
-    d.rectangle((90, 190, 520, 330), fill=LIGHT, outline=INK, width=2)
+    d.rectangle((90, 190, 520, 415), fill=LIGHT, outline=INK, width=2)
     d.text((110, 210), "入力（日本語の指示）", font=font(26, "bold"), fill=INK)
-    _rich(d, (110, 255), f"「{instruction}」", font(28), 390)
-    d.rectangle((90, 380, 520, 560), fill=YELLOW, outline=INK, width=2)
-    d.text((305, 430), "gemma4（4B）", font=font(36, "bold"), fill=INK, anchor="mm")
-    d.text((305, 490), "Ollama で PC 内で動作", font=font(28), fill=INK, anchor="mm")
-    d.line((305, 330, 305, 372), fill=INK, width=4)
-    d.polygon([(305, 380), (295, 362), (315, 362)], fill=INK)
+    _rich(d, (110, 255), f"「{instruction}」", font(24), 390)
+    d.rectangle((90, 440, 520, 570), fill=YELLOW, outline=INK, width=2)
+    d.text((305, 480), "gemma4（4B）", font=font(36, "bold"), fill=INK, anchor="mm")
+    d.text((305, 535), "Ollama で PC 内で動作", font=font(28), fill=INK, anchor="mm")
+    d.line((305, 415, 305, 433), fill=INK, width=4)
+    d.polygon([(305, 440), (295, 424), (315, 424)], fill=INK)
     _code_box(d, (560, 190, 1260, 560), "システムプロンプト（抜粋）", prompt_lines, 22)
     _code_box(d, (560, 590, 1260, 950), "JSON Schema（出力の形を固定）", schema_lines, 22)
     _code_box(d, (1300, 190, w - 90, 700), "出力（実際の結果）", output_lines, 22)
@@ -321,7 +371,7 @@ def llm_card(size, instruction, prompt_lines, schema_lines, output_lines, notes,
         d.text((120, y + 28), str(i + 1), font=font(30, "bold"), fill=(255, 255, 255), anchor="mm")
         d.text((170, y + 2), head, font=font(30, "bold"), fill=INK)
         _rich(d, (170, y + 48), body, font(24), 370)
-    d.line((520, 470, 552, 470), fill=INK, width=3)
+    d.line((520, 505, 552, 505), fill=INK, width=3)
     d.line((1260, 445, 1292, 445), fill=INK, width=3)
     d.polygon([(1300, 445), (1284, 435), (1284, 455)], fill=INK)
     return np.asarray(img)

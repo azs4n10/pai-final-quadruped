@@ -14,6 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 POLICY = os.path.join(HERE, "models", "big_dog_policy.npz")
 BASE_H = 0.46
 ACTION_SCALE = 0.8  # stairs_cpu.py と同じ
+GAIT_PERIOD = 0.5  # stairs_cpu.py と同じ（歩くリズムの周期）
 SCAN_X = np.linspace(-0.45, 0.9, 10)
 SCAN_Y = np.linspace(-0.4, 0.4, 5)
 SCAN = np.array([(x, y) for x in SCAN_X for y in SCAN_Y])
@@ -78,6 +79,7 @@ class BigDog:
         self.last_act = np.zeros(model.nu)
         self.n_sub = int(round(0.02 / model.opt.timestep))
         self._gid = np.zeros(1, dtype=np.int32)
+        self.phase = 0.0
 
     def ground_z(self, x, y, top):
         dist = mujoco.mj_ray(self.m, self.d, np.array([x, y, top]), np.array([0.0, 0.0, -1.0]), RAY_GROUP, 1, -1, self._gid)
@@ -100,9 +102,10 @@ class BigDog:
 
     def obs(self, cmd):
         g = self.d.site_xmat[self.imu].reshape(3, 3).T @ np.array([0.0, 0.0, -1.0])
+        gait = [np.sin(2 * np.pi * self.phase), np.cos(2 * np.pi * self.phase)] if len(self.policy.mean) == 100 else []
         return np.concatenate([
             self.d.sensordata[self.vel:self.vel + 3], self.d.sensordata[self.gyro:self.gyro + 3], g,
-            self.d.qpos[7:] - self.default, self.d.qvel[6:], self.last_act, cmd, self.scan(),
+            self.d.qpos[7:] - self.default, self.d.qvel[6:], self.last_act, cmd, self.scan(), gait,
         ])
 
     def step(self, cmd):
@@ -110,6 +113,7 @@ class BigDog:
         self.d.ctrl[:] = self.default + ACTION_SCALE * a
         mujoco.mj_step(self.m, self.d, nstep=self.n_sub)
         self.last_act = a
+        self.phase = (self.phase + 0.02 / GAIT_PERIOD) % 1.0
         return a
 
     def fallen(self):

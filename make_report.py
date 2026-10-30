@@ -5,6 +5,7 @@
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -15,8 +16,9 @@ from home_demo import NAMES
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPORT = os.path.join(HERE, "report")
-RUN = os.path.join(HERE, "runs", "big_stairs2")
+RUN = os.path.join(HERE, "runs", "big_trot")
 CLIPS = os.path.join(HERE, "runs", "clips_home")
+ADOPTED = "33000016"  # 採用したチェックポイント（models/big_dog_model.zip）のステップ数
 EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 
 
@@ -60,19 +62,20 @@ def main():
     climb = json.load(open(os.path.join(RUN, "climb.json")))
     frame("demo1.mp4", 11.5, "demo1.jpg")
     frame("demo1.mp4", 7.0, "demo2.jpg")
-    final = climb[max(climb, key=int)]
+    final = climb[ADOPTED]
     html = open(os.path.join(REPORT, "report_template.html"), encoding="utf-8").read()
     fill = {
-        "{{STEPS}}": "約 1.2 億",
-        "{{HOURS}}": "13",
+        "{{STEPS}}": "約 1.6 億",
         "{{STAIRS_TABLE}}": stairs_table(st),
         "{{HOME_TABLE}}": home_table(hv),
-        "{{HOME_TEXT}}": (f"<p>家の階段（15 cm × 14 段）だけを取り出した試験では、最終の方策で 10 回中 {final['success'] * 10:.0f} 回上り切った"
+        "{{HOME_TEXT}}": (f"<p>家の階段（15 cm × 14 段）だけを取り出した試験では、採用した方策で 10 回中 {final['success'] * 10:.0f} 回上り切った"
                           "（学習の経過は下のグラフ）。</p>"),
         "{{DISCUSSION}}": open(os.path.join(REPORT, "discussion.html"), encoding="utf-8").read(),
     }
     for k, v in fill.items():
         html = html.replace(k, v)
+    # 数と単位（「15 cm」「0.8 m/秒」など）の間や途中で改行させない
+    html = re.sub(r"([±\d][\d.,]*) (m/秒|N·m|cm|mm|ms|m|kg|rad|Hz|GB|°)(?![A-Za-z])", r'<span class="nb">\1&nbsp;\2</span>', html)
     out = os.path.join(REPORT, "report.html")
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)

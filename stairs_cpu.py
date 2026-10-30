@@ -19,10 +19,23 @@ SCALES = dict(tracking_lin_vel=1.5, tracking_ang_vel=0.75, lin_vel_z=-0.2, ang_v
               feet_clearance=-1.0, feet_slip=-0.1, feet_air_time=0.2, body_height=-5.0)
 MAX_FOOT_H, SIGMA, DT, EP_LEN = 0.15, 0.25, 0.02, 1000
 COL_P = np.array([0.25, 0.25, 0.1, 0.1, 0.15, 0.15])  # 地形の列の選ばれやすさ（上り階段を多めに練習する）
+# 歩くリズム（BigTrot-v0）：周期 0.5 秒の位相を観測に入れ、対角の 2 本ずつ交互に足を上げ下ろしする目標の高さに近いほど加点する。
+# 位相なしで学習した方策は、右前足を上げたまま 3 本で跳ねる歩き方に落ち着き、罰を足しても抜け出せなかった
+GAIT_PERIOD, SWING_H = 0.5, 0.12
+GAIT_OFFSET = np.array([0.0, 0.5, 0.5, 0.0])  # FL・FR・HL・HR（FL と HR、FR と HL が同時に動く速歩）
+GAIT_SCALES = dict(feet_phase=1.0, lin_vel_z=-1.0)
+
+
+def foot_targets(phase, moving):
+    """位相 phase（0〜1）での各足の目標の高さ。周期の前半は振り上げ（正弦の山）、後半は接地。"""
+    p = (phase + GAIT_OFFSET) % 1.0
+    return np.where(p < 0.5, SWING_H * np.sin(np.pi * p / 0.5), 0.0) * moving
 
 
 class BigStairsEnv(gym.Env):
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, gait=False):
+        self.gait = gait
+        self.scales = {**SCALES, **(GAIT_SCALES if gait else {})}
         self.m = mujoco.MjModel.from_xml_path(XML)
         self.H = np.load(TERRAIN)
         self.m.hfield_data[:] = (self.H / self.m.hfield_size[0, 2]).ravel()
@@ -36,7 +49,7 @@ class BigStairsEnv(gym.Env):
         self.gyro_adr = self.m.sensor_adr[self.m.sensor("gyro").id]
         self.vel_adr = self.m.sensor_adr[self.m.sensor("local_linvel").id]
         self.up_adr = self.m.sensor_adr[self.m.sensor("upvector").id]
-        self.observation_space = gym.spaces.Box(-np.inf, np.inf, (98,), np.float32)
+        self.observation_space = gym.spaces.Box(-np.inf, np.inf, (100 if gait else 98,), np.float32)
         self.action_space = gym.spaces.Box(-1.0, 1.0, (12,), np.float32)
         self.level = 0
         self.first = True
@@ -103,18 +116,21 @@ class BigStairsEnv(gym.Env):
         self.last_contact = np.zeros(4, bool)
         self.last_feet_xy = self.d.site_xpos[self.feet][:, :2].copy()
         self.t, self.fell, self.dist = 0, False, 0.0
+        self.phase = self.np_random.uniform()
         return self._obs(), {}
 
     def _obs(self):
         g = self.d.site_xmat[self.imu].reshape(3, 3).T @ np.array([0.0, 0.0, -1.0])
         return np.concatenate([self.d.sensordata[self.vel_adr:self.vel_adr + 3], self.d.sensordata[self.gyro_adr:self.gyro_adr + 3], g,
-                               self.d.qpos[7:] - self.default, self.d.qvel[6:], self.last_act, self.cmd, self.scan()]).astype(np.float32)
+                               self.d.qpos[7:] - self.default, self.d.qvel[6:], self.last_act, self.cmd, self.scan(),
+                               [np.sin(2 * np.pi * self.phase), np.cos(2 * np.pi * self.phase)] if self.gait else []]).astype(np.float32)
 
     def step(self, action):
         a = np.clip(action, -1, 1)
         self.d.ctrl[:] = self.default + ACTION_SCALE * a
         mujoco.mj_step(self.m, self.d, nstep=self.n_sub)
         self.t += 1
+        self.phase = (self.phase + DT / GAIT_PERIOD) % 1.0
         fh = self.feet_height()
         contact = fh < 0.02
         first_contact = (self.air > 0) & (contact | self.last_contact)
@@ -139,8 +155,9 @@ class BigStairsEnv(gym.Env):
             feet_clearance=np.sum(np.abs(fh - MAX_FOOT_H) * np.sqrt(speed + 1e-6)),
             feet_slip=np.sum(speed ** 2 * contact) * cmd_on, feet_air_time=np.sum((self.air - 0.1) * first_contact) * cmd_on,
             body_height=(self.body_height() - BASE_H) ** 2,
+            feet_phase=np.exp(-np.sum((fh - foot_targets(self.phase, cmd_on)) ** 2) / 0.01),
         )
-        reward = float(np.clip(sum(SCALES[k] * v for k, v in r.items()) * DT, 0, 1e4))
+        reward = float(np.clip(sum(self.scales.get(k, 0.0) * v for k, v in r.items()) * DT, 0, 1e4))
         self.last_last_act, self.last_act = self.last_act, a
         self.air *= ~contact
         self.last_contact = contact
@@ -155,3 +172,4 @@ class BigStairsEnv(gym.Env):
 
 
 gym.register(id="BigStairs-v0", entry_point=BigStairsEnv)
+gym.register(id="BigTrot-v0", entry_point=BigStairsEnv, kwargs=dict(gait=True))

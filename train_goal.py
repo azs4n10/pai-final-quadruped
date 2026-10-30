@@ -65,7 +65,7 @@ class CheckpointCallback(BaseCallback):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0", "TerrainDog-v0", "TerrainDog-v1", "BigStairs-v0"])
+    p.add_argument("--env", default="GoalAnt-v0", choices=["GoalAnt-v0", "GoalDog-v0", "TerrainDog-v0", "TerrainDog-v1", "BigStairs-v0", "BigTrot-v0"])
     p.add_argument("--steps", type=int, default=20_000_000)
     p.add_argument("--n-envs", type=int, default=16)
     p.add_argument("--save-every", type=int, default=1_000_000)
@@ -83,10 +83,10 @@ def main():
     ckpt = os.path.join(args.out, "ckpt")
     os.makedirs(ckpt, exist_ok=True)
 
-    if args.env == "BigStairs-v0":  # 1 つの子プロセスで複数の環境（train_big.py から起動する）
+    if args.env in ("BigStairs-v0", "BigTrot-v0"):  # 1 つの子プロセスで複数の環境（train_big.py から起動する）
         from vec_workers import BatchedSubprocVecEnv
 
-        venv = BatchedSubprocVecEnv("BigStairs-v0", args.n_envs, min(16, args.n_envs), "stairs_cpu")
+        venv = BatchedSubprocVecEnv(args.env, args.n_envs, min(16, args.n_envs), "stairs_cpu")
     elif args.house_envs:  # 家と庭と、元の地形を混ぜて学習する（元の地形での歩き方を忘れないように）
         from stable_baselines3.common.monitor import Monitor
         import gymnasium as gym
@@ -114,7 +114,7 @@ def main():
         venv = VecNormalize(venv, norm_obs=True, norm_reward=True, clip_obs=10.0, gamma=0.99)
     lr = (lambda progress_remaining: args.lr * progress_remaining) if args.lr_decay else args.lr
 
-    big = args.env == "BigStairs-v0"
+    big = args.env in ("BigStairs-v0", "BigTrot-v0")
     model = PPO(
         "MlpPolicy",
         venv,
@@ -128,7 +128,7 @@ def main():
         ent_coef=0.0,
         max_grad_norm=0.5,
         policy_kwargs=(dict(net_arch=dict(pi=[512, 256, 128], vf=[512, 256, 128]), log_std_init=-0.5)
-                       if args.env == "BigStairs-v0" else
+                       if big else
                        dict(net_arch=dict(pi=[256, 256], vf=[256, 256]), log_std_init=-0.5 if args.env == "GoalAnt-v0" else -0.7)),
         device="cuda" if big and torch.cuda.is_available() else "cpu",  # 大型版はネットが大きいので更新を GPU で
         verbose=0,

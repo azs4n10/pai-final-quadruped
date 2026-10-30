@@ -28,6 +28,7 @@
   .num { display: inline-block; background: #44546a; color: #fff; font-weight: bold; padding: 0 6px; margin-right: 6px; }
   .red { color: #c00000; font-weight: bold; }
   code { font-family: Consolas, monospace; font-size: 9pt; background: #f2f2f2; padding: 0 3px; }
+  .nb { white-space: nowrap; }
   .deg { font-family: "Segoe UI", Arial, sans-serif; }
   table, figure, .two, .flow { page-break-inside: avoid; }
   h2, h3 { page-break-after: avoid; }
@@ -41,8 +42,8 @@
 <h2>1. 概要</h2>
 <p>「玄関に届いた荷物を、2 階の寝室まで運んで」のような日本語の指示を出すと、犬型の四足歩行ロボットが 2 階建ての家の中を歩き、14 段の階段を上り下りして荷物を届けるシステムを、物理シミュレータ MuJoCo 上に作った。指示の解釈はパソコンの中で動く LLM（gemma4 / Ollama）、経路は間取り図からの A* 探索、歩行は強化学習（PPO）で得た「指令した速度で歩く」方策が担当する。ロボット・家・家具・自動ドアはすべて自作した。</p>
 <div class="flow">
-  <div class="box"><b>日本語の指示</b><br>「玄関の荷物を 2 階の寝室へ」</div><div class="ar">→</div>
-  <div class="box"><b>ローカル LLM</b><br>場所の順番と<br>荷物の受け取り先・届け先</div><div class="ar">→</div>
+  <div class="box"><b>日本語の指示</b><br>「玄関の荷物を<br>2 階の寝室へ」</div><div class="ar">→</div>
+  <div class="box"><b>ローカル LLM</b><br>場所の順番と、荷物の<br>受け取り先・届け先</div><div class="ar">→</div>
   <div class="box"><b>経路計画</b><br>階ごとの A*<br>階段は上下の通過点</div><div class="ar">→</div>
   <div class="box"><b>歩行方策</b><br>強化学習（PPO）<br>速度指令で階段も歩く</div>
 </div>
@@ -51,9 +52,9 @@
 <p>家の中で荷物を部屋から部屋へ運ぶロボットを、専門知識のない人が普段の言葉で動かせるようにしたいと考えた。そのために次の 3 つの課題を、それぞれ次の方法で解いた。</p>
 <table>
   <tr><th style="width:42%">課題</th><th>選んだ方法</th></tr>
-  <tr><td>一般の家には 2 階への階段や段差がある</td><td>車輪ではなく<b>四足歩行</b>にし、足元の地形を見ながら階段を上り下りする方策を学習する</td></tr>
-  <tr><td>指示は普段の言葉で出したい</td><td><b>LLM</b> で指示を「立ち寄る場所の順番」と「荷物の受け取り先・届け先」に変換する</td></tr>
-  <tr><td>家の間取りや会話を外部に送りたくない</td><td>外部の API を使わず、<b>パソコンの中で動く LLM</b>（Ollama）を使う</td></tr>
+  <tr><td>一般の家には 2 階への階段や段差がある</td><td>車輪ではなく<b>四足歩行</b>にし、<br>足元の地形を見ながら階段を上り下りする</td></tr>
+  <tr><td>指示は普段の言葉で出したい</td><td><b>LLM</b> で指示を「立ち寄る場所の順番」と<br>「荷物の受け取り先・届け先」に変換する</td></tr>
+  <tr><td>家の間取りや会話を外部に送りたくない</td><td>外部の API を使わず、<br><b>パソコンの中で動く LLM</b>（Ollama）で解釈する</td></tr>
 </table>
 
 <h2>3. 手法</h2>
@@ -63,12 +64,12 @@
   <figure style="flex:0.9"><img src="robot_drawing.png"><figcaption>図面（寸法・関節）</figcaption></figure>
 </div>
 <table>
-  <tr><td class="h">体</td><td>胴体 0.73 m、脚 4 本（太もも・すね各 0.29 m）、各脚は外転・股・膝の 3 関節で計 12 関節、全体で 34 kg、立った胴体の高さ 0.46 m。寸法・関節・質量を MJCF（XML）で記述した。外装やセンサーユニットは見た目だけの部品（質量 0・接触なし）</td></tr>
-  <tr><td class="h">制御</td><td>関節の位置制御（比例ゲイン 230、最大トルク 115 N·m）。方策は「立ち姿勢からの関節角のずれ」（±0.8 rad）を 50 Hz で出力</td></tr>
-  <tr><td class="h">観測（98 次元）</td><td>胴体の速度・角速度・重力の向き、12 関節の角度と速度、直前の行動、速度指令（前後・左右・旋回）、<b>足元 50 点の地面の高さ</b>（前 0.9 m〜後ろ 0.45 m、左右 0.4 m）</td></tr>
-  <tr><td class="h">報酬</td><td>加点：指令した速度に合う、足を地面から離して前へ振り出す（滞空時間）。減点：上下の揺れ・傾き・関節の可動域の端・急な動き・トルク・足の滑り・振り出す足が段の上面から 15 cm の高さに合わない・胴体の高さのずれ・転倒（MuJoCo Playground の Go1 の報酬を参考に、足の高さを段の上面から測るよう変えた）</td></tr>
-  <tr><td class="h">練習場</td><td>60 m × 36 m の高さマップ（3 cm 間隔）を、難しさ 10 段階×地形 6 種類のタイル（6 m 四方）に分けた。上り階段・下り階段（段差 5〜18 cm、踏み面 26・30 cm）、坂（5〜25<span class="deg">°</span>）、凸凹</td></tr>
-  <tr><td class="h">学習</td><td>PPO（Stable-Baselines3）、32〜64 環境並列、方策・価値とも 512・256・128 の MLP。1 エピソード 20 秒の終わりに、2.4 m 以上進めたら 1 段難しいタイル、転ぶか 1 m 未満なら 1 段易しいタイルへ移す（カリキュラム学習）。エピソードの半分は上り階段のタイルから始め、上り階段を多めに練習させた。通算 約 1.2 億 ステップ（約 13 時間）。途中（3,100 万ステップ）で、膝を深く曲げられるよう関節角のずれの範囲を ±0.5 から ±0.8 rad に広げ、それまでの方策の出力が変わらないよう重みを換算して続きから学習した</td></tr>
+  <tr><td class="h">体</td><td>胴体 <span class="nb">0.73&nbsp;m</span>、脚 4 本（太もも・すね各 <span class="nb">0.29&nbsp;m</span>）、各脚は外転・股・膝の 3 関節で計 12 関節、全体で <span class="nb">34&nbsp;kg</span>、立った胴体の高さ <span class="nb">0.46&nbsp;m</span>。寸法・関節・質量を MJCF（XML）で記述した。外装やセンサーユニットは見た目だけの部品（質量 0・接触なし）</td></tr>
+  <tr><td class="h">制御</td><td>関節の位置制御（比例ゲイン 230、最大トルク <span class="nb">115&nbsp;N·m</span>）。方策は「立ち姿勢からの関節角のずれ」（<span class="nb">±0.8&nbsp;rad</span>）を <span class="nb">50&nbsp;Hz</span> で出力</td></tr>
+  <tr><td class="h">観測（100 次元）</td><td>胴体の速度・角速度・重力の向き、12 関節の角度と速度、直前の行動、速度指令（前後・左右・旋回）、<b>足元 50 点の地面の高さ</b>（前 <span class="nb">0.9&nbsp;m</span>〜後ろ <span class="nb">0.45&nbsp;m</span>、左右 <span class="nb">0.4&nbsp;m</span>）、<b>歩くリズムの位相</b>（周期 0.5 秒の sin・cos）</td></tr>
+  <tr><td class="h">報酬</td><td>加点：指令した速度に合う、足を地面から離して前へ振り出す（滞空時間）、<b>4 本の足の高さが速歩の目標に合う</b>（位相に合わせて対角の 2 本ずつ交互に <span class="nb">12&nbsp;cm</span> 上げ下ろす）。減点：上下の揺れ・傾き・関節の可動域の端・急な動き・トルク・足の滑り・振り出す足が段の上面から <span class="nb">15&nbsp;cm</span> の高さに合わない・胴体の高さのずれ・転倒（MuJoCo Playground の Go1 の報酬を参考に、足の高さを段の上面から測るよう変えた）</td></tr>
+  <tr><td class="h">練習場</td><td><span class="nb">60&nbsp;m</span> × <span class="nb">36&nbsp;m</span> の高さマップ（<span class="nb">3&nbsp;cm</span> 間隔）を、難しさ 10 段階×地形 6 種類のタイル（<span class="nb">6&nbsp;m</span> 四方）に分けた。上り階段・下り階段（段差 5〜<span class="nb">18&nbsp;cm</span>、踏み面 26・<span class="nb">30&nbsp;cm</span>）、坂（5〜25<span class="deg">°</span>）、凸凹</td></tr>
+  <tr><td class="h">学習</td><td>PPO（Stable-Baselines3）、32〜64 環境並列、方策・価値とも 512・256・128 の MLP。1 エピソード 20 秒の終わりに、<span class="nb">2.4&nbsp;m</span> 以上進めたら 1 段難しいタイル、転ぶか <span class="nb">1&nbsp;m</span> 未満なら 1 段易しいタイルへ移す（カリキュラム学習）。エピソードの半分は上り階段のタイルから始め、上り階段を多めに練習させた。通算 約 1.6 億 ステップ。途中（3,100 万ステップ）で、膝を深く曲げられるよう関節角のずれの範囲を ±0.5 から <span class="nb">±0.8&nbsp;rad</span> に広げ、それまでの方策の出力が変わらないよう重みを換算して続きから学習した。さらに 1.2 億ステップの時点で、観測に歩くリズムの位相を加え（増えた入力の重みは 0 から始める）、速歩の報酬を足して 4,000 万ステップ続けた。最後の 9 個のチェックポイント（3,200 万〜4,000 万ステップ）を家の中の配達の 3 経路（各 10 回）で試し、成功が最も多かった 3,300 万ステップのものを採用した</td></tr>
 </table>
 
 <h3><span class="num">2</span>2 階建ての家</h3>
@@ -77,11 +78,11 @@
   <figure><img src="home_2f.jpg"><figcaption>2 階（寝室、子ども部屋、書庫、ホール）</figcaption></figure>
 </div>
 <ul>
-  <li>12 m × 8 m の 2 階建て。階段は 1 段 15 cm × 14 段（2 階の床まで 2.1 m）、踏み面 30 cm、幅 1.5 m。2 階の吹き抜けのまわりに手すり。</li>
+  <li><span class="nb">12&nbsp;m</span> × <span class="nb">8&nbsp;m</span> の 2 階建て。階段は 1 段 <span class="nb">15&nbsp;cm</span> × 14 段（2 階の床まで <span class="nb">2.1&nbsp;m</span>）、踏み面 <span class="nb">30&nbsp;cm</span>、幅 <span class="nb">1.5&nbsp;m</span>。2 階の吹き抜けのまわりに手すり。</li>
   <li>家具はソファ・テレビ・食卓と椅子・キッチン・冷蔵庫・ベッド・本棚・机・おもちゃ箱・観葉植物・ラグなどを、基本形状を組み合わせて作った。布・木目・壁紙・床の画像も自作した。</li>
-  <li>部屋の入口には自動の引き戸（和室は障子）があり、ロボットが 1.8 m 以内に来ると開く。</li>
+  <li>部屋の入口には自動の引き戸（和室は障子）があり、ロボットが <span class="nb">1.8&nbsp;m</span> 以内に来ると開く。</li>
   <li>荷物は、受け取る場所で家の人が背中のカゴに載せ、届け先で降ろす想定（画面では箱の表示を切り替える）。</li>
-  <li>歩く面の物理と足元のレイ：床は箱、階段は練習場と同じ 3 cm 間隔の高さマップで表した。</li>
+  <li>歩く面の物理と足元のレイ：床は箱、階段は練習場と同じ <span class="nb">3&nbsp;cm</span> 間隔の高さマップで表した。</li>
 </ul>
 
 <h3><span class="num">3</span>LLM による指示の解釈</h3>
@@ -89,44 +90,45 @@
 
 <h3><span class="num">4</span>経路計画と速度指令</h3>
 <figure><img src="planner_steps.png" style="max-width:100%"><figcaption>経路計画の手順（1 階、充電ステーション → キッチン）</figcaption></figure>
-<p>階ごとに、壁・家具・手すりを 10 cm 格子の地図に描き、ロボットの幅の半分＋余裕（0.4 m）だけ太らせて A*（8 近傍）で最短経路を探し、見通しのきく点まで飛ばして経由地を間引く。階をまたぐときは、階段の下（1 階）と上（2 階）の通過点を必ず通す。経由地へは、向きのずれから旋回の速度、距離と向きから前進の速度を決めて方策に指令する。階段の上では、0.7 m 先の階段の中央線上の点へ向かう旋回と、中央線からの横ずれを戻す横方向の速度を指令し、前進は 0.8 m/秒の一定にする。</p>
+<p>階ごとに、壁・家具・手すりを <span class="nb">10&nbsp;cm</span> 格子の地図に描き、ロボットの幅の半分＋余裕（<span class="nb">0.4&nbsp;m</span>）だけ太らせて A*（8 近傍）で最短経路を探し、見通しのきく点まで飛ばして経由地を間引く。階をまたぐときは、階段の下（1 階）と上（2 階）の通過点を必ず通す。経由地へは、向きのずれから旋回の速度、距離と向きから前進の速度を決めて方策に指令する。階段の上では、<span class="nb">0.7&nbsp;m</span> 先の階段の中央線上の点へ向かう旋回と、中央線からの横ずれを戻す横方向の速度を指令し、前進は <span class="nb">0.8&nbsp;m/秒</span>の一定にする。</p>
 
 <h2>4. 工夫した点</h2>
 <ul>
   <li><b>役割の分担</b>：LLM は「どこへ・どの順で・何を運ぶか」、経路計画は「壁や家具を避ける道筋」、歩行方策は「指令した速度で段差も歩く」だけを担当する。歩行方策は家の間取りを知らないので、地図を作り直すだけで別の家でも使える。</li>
   <li><b>足元の地形を測る</b>：胴体のまわり 50 点の地面の高さを観測に入れ、振り出す足の高さも段の上面から測って報酬に入れた。</li>
   <li><b>地形ごとのタイルでのカリキュラム</b>：難しさの違うタイルを並べ、上達したら次のタイルへ移す。最も難しいタイルを越えたらランダムな難しさから練習し直し、易しい地形を忘れないようにした。</li>
-  <li><b>学習した地形と家の階段を揃える</b>：家の階段の物理を、練習場と同じ 3 cm 間隔の高さマップで作った（角の鋭い箱の段では成功率が下がることを、以前の小型のロボットで確かめていた）。</li>
-  <li><b>家の階段で失敗した原因を一つずつ調べて直した</b>：練習場の 15 cm の階段は上れるのに家の階段で止まる原因を、条件を変えて試して調べた。①関節角のずれが ±0.5 rad では膝が十分に曲がらず足が 14 cm 程度までしか上がらない → ±0.8 rad に広げた。②幅 1.1 m の階段では少し横にふらつくだけで壁に当たって引っかかる → 幅を 1.5 m にし、中央線に沿わせる指令を加えた。③ゆっくりだと段に足を掛けられない（指令 0.4・0.6・0.8 m/秒で、10 回中 1・5・8 回成功）→ 階段では 0.8 m/秒にした。</li>
+  <li><b>学習した地形と家の階段を揃える</b>：家の階段の物理を、練習場と同じ <span class="nb">3&nbsp;cm</span> 間隔の高さマップで作った（角の鋭い箱の段では成功率が下がることを、以前の小型のロボットで確かめていた）。</li>
+  <li><b>家の階段で失敗した原因を一つずつ調べて直した</b>：練習場の <span class="nb">15&nbsp;cm</span> の階段は上れるのに家の階段で止まる原因を、条件を変えて試して調べた。①関節角のずれが <span class="nb">±0.5&nbsp;rad</span> では膝が十分に曲がらず足が <span class="nb">14&nbsp;cm</span> 程度までしか上がらない → <span class="nb">±0.8&nbsp;rad</span> に広げた。②幅 <span class="nb">1.1&nbsp;m</span> の階段では少し横にふらつくだけで壁に当たって引っかかる → 幅を <span class="nb">1.5&nbsp;m</span> にし、中央線に沿わせる指令を加えた。③ゆっくりだと段に足を掛けられない（指令 0.4・0.6・<span class="nb">0.8&nbsp;m/秒</span>で、10 回中 1・5・8 回成功）→ 階段では <span class="nb">0.8&nbsp;m/秒</span>にした。</li>
+  <li><b>速歩のリズムを教える</b>：位相を使わずに学習した方策は、右前足を上げたまま残りの 3 本で跳ねるように進んでいた（<span class="nb">0.7&nbsp;m/秒</span>で、4 本とも宙に浮いている時間が 32%）。減点を足しても抜け出せなかったため、周期 0.5 秒の位相を観測に入れ、対角の 2 本ずつを交互に上げ下ろす目標の高さに近いほど加点した。その結果、4 本とも宙に浮く時間は 0% になり、4 本の足がそれぞれ地面近く（<span class="nb">4&nbsp;cm</span> 未満）にある時間も 5〜7 割でそろった。</li>
   <li><b>LLM の出力を型で縛る</b>：存在しない部屋の名前や崩れた形式が実行系に渡らない。</li>
   <li><b>見せ方</b>：1 階にいる間は 2 階を外して見せ、カメラとロボットの間の壁・扉・家具は半透明にした。画面には指示文・LLM の計画・1 階と 2 階の間取り図と軌跡を重ねた。</li>
 </ul>
 
 <h2>5. 評価方法と結果</h2>
 <h3>(1) 練習場の階段</h3>
-<p>上り階段・下り階段のタイルの中央から、前進の速度指令 0.6 m/秒で歩かせ、15 秒以内に転ばずに中央から 2.6 m 先まで進めたら成功とした（各 20 回、向きはランダム）。</p>
+<p>上り階段・下り階段のタイルの中央から、前進の速度指令 <span class="nb">0.6&nbsp;m/秒</span>で歩かせ、15 秒以内に転ばずに中央から <span class="nb">2.6&nbsp;m</span> 先まで進めたら成功とした（各 20 回、向きはランダム）。</p>
 <table>
 <tr><th>段差</th><th>上り：成功</th><th>上り：転倒</th><th>下り：成功</th><th>下り：転倒</th></tr>
-<tr><td>5 cm</td><td class="n">95%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr><td>6 cm</td><td class="n">95%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr><td>8 cm</td><td class="n">100%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr><td>9 cm</td><td class="n">90%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr><td>11 cm</td><td class="n">95%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr><td>12 cm</td><td class="n">95%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr><td>14 cm</td><td class="n">90%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
-<tr style="background:#fff2cc"><td>15 cm（家の階段）</td><td class="n">80%</td><td class="n">10%</td><td class="n">85%</td><td class="n">5%</td></tr>
-<tr><td>17 cm</td><td class="n">45%</td><td class="n">15%</td><td class="n">70%</td><td class="n">10%</td></tr>
-<tr><td>18 cm</td><td class="n">5%</td><td class="n">25%</td><td class="n">35%</td><td class="n">25%</td></tr>
+<tr><td><span class="nb">5&nbsp;cm</span></td><td class="n">90%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
+<tr><td><span class="nb">6&nbsp;cm</span></td><td class="n">90%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
+<tr><td><span class="nb">8&nbsp;cm</span></td><td class="n">95%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
+<tr><td><span class="nb">9&nbsp;cm</span></td><td class="n">95%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
+<tr><td><span class="nb">11&nbsp;cm</span></td><td class="n">100%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
+<tr><td><span class="nb">12&nbsp;cm</span></td><td class="n">95%</td><td class="n">0%</td><td class="n">95%</td><td class="n">5%</td></tr>
+<tr><td><span class="nb">14&nbsp;cm</span></td><td class="n">100%</td><td class="n">0%</td><td class="n">100%</td><td class="n">0%</td></tr>
+<tr style="background:#fff2cc"><td><span class="nb">15&nbsp;cm</span>（家の階段）</td><td class="n">60%</td><td class="n">5%</td><td class="n">90%</td><td class="n">10%</td></tr>
+<tr><td><span class="nb">17&nbsp;cm</span></td><td class="n">20%</td><td class="n">15%</td><td class="n">80%</td><td class="n">20%</td></tr>
+<tr><td><span class="nb">18&nbsp;cm</span></td><td class="n">0%</td><td class="n">20%</td><td class="n">35%</td><td class="n">65%</td></tr>
 </table>
 <h3>(2) 家の中の配達</h3>
 <p>デモの 2 つの指示を LLM が変換した経路と、2 階の子ども部屋へ行って 1 階へ戻る経路（直接指定）を、初期位置の乱数を変えて各 20 回実行した。全地点に順に着けば成功とした。</p>
 <table>
 <tr><th>経路</th><th>成功</th><th>転倒</th><th>成功時の平均所要時間</th></tr>
-<tr><td>充電ステーション → 寝室 → 充電ステーション</td><td class="n">90%</td><td class="n">10%</td><td class="n">44 秒</td></tr>
-<tr><td>キッチン → 和室</td><td class="n">100%</td><td class="n">0%</td><td class="n">38 秒</td></tr>
-<tr><td>子ども部屋 → 充電ステーション</td><td class="n">95%</td><td class="n">5%</td><td class="n">55 秒</td></tr>
+<tr><td>充電ステーション → 寝室 → 充電ステーション</td><td class="n">85%</td><td class="n">15%</td><td class="n">50 秒</td></tr>
+<tr><td>キッチン → 和室</td><td class="n">100%</td><td class="n">0%</td><td class="n">41 秒</td></tr>
+<tr><td>子ども部屋 → 充電ステーション</td><td class="n">90%</td><td class="n">5%</td><td class="n">70 秒</td></tr>
 </table>
-<p>家の階段（15 cm × 14 段）だけを取り出した試験では、最終の方策で 10 回中 10 回上り切った（学習の経過は下のグラフ）。</p>
+<p>家の階段（<span class="nb">15&nbsp;cm</span> × 14 段）だけを取り出した試験では、採用した方策で 10 回中 7 回上り切った（学習の経過は下のグラフ）。</p>
 <div class="two">
   <figure><img src="demo1.jpg"><figcaption>デモ画面（2 階の寝室へ荷物を運ぶ、2 倍速）</figcaption></figure>
   <figure><img src="demo2.jpg"><figcaption>階段を上る様子</figcaption></figure>
@@ -135,11 +137,10 @@
 
 <h2>6. 考察と今後</h2>
 <ul>
-  <li><b>上れる段差の限界</b>：練習場の上り階段の成功率は、段差 14 cm までは 90% 以上だったが、15 cm で 80%、17 cm で 45%、18 cm で 5% に下がった。学習の終わりでも、練習場で挑戦していた段差の平均は 12〜13 cm で、17 cm 以上の段はまだ十分に練習できていない。</li>
-  <li><b>転倒は長い階段の後半で起きた</b>：家の配達 60 回のうち転倒は 3 回で、すべて階段を上る途中の 9〜11 段目だった（下りでは 0 回）。練習場の階段は中央から 2.6 m（およそ 8〜9 段）進むと成功として次の練習に移るため、それより長く上り続ける練習が足りなかった可能性がある。タイルを広げて長い階段を練習させる、成功の距離を延ばす、などで確かめたい。</li>
-  <li><b>方策の外側の工夫も効いた</b>：同じ方策でも、階段の幅と指令の速さを変えるだけで家の階段の成功率が大きく変わった（幅 1.1 m・ゆっくりでは 0〜1 割、幅 1.5 m・0.8 m/秒では 8〜10 割）。実際の家に置くには、細い階段や手すり際でも横にふらつかない歩き方を、学習の段階で身につけさせる必要がある。</li>
+  <li><b>歩き方を直すと、高い段が少し苦手になった</b>：速歩のリズムを教える前の方策と比べると、練習場の <span class="nb">15&nbsp;cm</span> の上り階段の成功率は 80% から 60% に、<span class="nb">17&nbsp;cm</span> では 45% から 20% に下がった（<span class="nb">14&nbsp;cm</span> 以下は 90% 以上のまま）。足を上げる高さ（<span class="nb">12&nbsp;cm</span>）とリズムを一定の目標に合わせたため、段の高さに応じて足を高く上げる余地が減った可能性がある。目標の足の高さを、足元の地面の高さから段ごとに変えることで確かめたい。</li>
+  <li><b>転倒は階段の上で、横にずれたときに起きた</b>：家の配達 60 回のうち転倒は 4 回で、すべて階段の上だった。そのうち 3 回は、階段の中央線から <span class="nb">40&nbsp;cm</span> 以上横にずれて壁際に寄っていた。中央線に沿わせる指令だけでは横のふらつきを抑えきれておらず、横にずれない歩き方を学習の段階で身につけさせる必要がある。</li>
+  <li><b>方策の外側の工夫も効いた</b>：同じ方策でも、階段の幅と指令の速さを変えるだけで家の階段の成功率が大きく変わった（位相を入れる前の方策で、幅 <span class="nb">1.1&nbsp;m</span>・ゆっくりでは 0〜1 割、幅 <span class="nb">1.5&nbsp;m</span>・<span class="nb">0.8&nbsp;m/秒</span>では 8〜10 割）。実際の家に置くには、細い階段や手すり際でも歩ける方策が必要になる。</li>
 
-  <li><b>学習の速さ</b>：GPU で物理計算を行う MJX（MuJoCo の GPU 版）も試したが、この PC の GPU（RTX 3050 Laptop、4 GB）では 1 ステップごとの固定の待ち時間が大きく、1,024 環境で毎秒約 4,700 ステップにとどまった。CPU の並列（32〜64 環境で毎秒約 2,700〜2,900 ステップ）と大差がないため、CPU で学習した。</li>
   <li><b>今後</b>：腕を付けて扉の開け閉めや物の受け渡しを自分で行う、カメラ画像から部屋や物を認識する（VLM）、モデル誤差や外乱をランダム化した学習で実機の四足ロボットへ移す（sim-to-real）。</li>
 </ul>
 

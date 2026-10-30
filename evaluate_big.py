@@ -18,7 +18,7 @@ from big_dog import BigDog, load_policy, stairs_command
 from stairs_cpu import N_COL, TILE, BigStairsEnv
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUN = os.path.join(HERE, "runs", "big_stairs2")
+RUN = os.path.join(HERE, "runs", "big_trot")
 MODEL = os.path.join(HERE, "models", "big_dog_model.zip")
 HOME_ROUTES = [  # (経路, 受け取る場所, 届ける場所)
     (["dock", "bedroom", "dock"], "dock", "bedroom"),
@@ -29,7 +29,7 @@ HOME_ROUTES = [  # (経路, 受け取る場所, 届ける場所)
 
 def stairs_eval(policy, n=20, limit=15.0):
     """練習場の上り階段（列 0・1）と下り階段（列 2・3）の各難しさで、中央から外へ 2.6 m 進めたら成功。"""
-    env = BigStairsEnv()
+    env = BigStairsEnv(gait=len(policy.mean) == 100)  # 歩くリズムの位相を観測に入れる方策か
     out = {}
     from gpu.make_assets import STEP_MAX, STEP_MIN
 
