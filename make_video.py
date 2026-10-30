@@ -15,7 +15,7 @@ import imageio_ffmpeg
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RUN = os.path.join(HERE, "runs", "big_stairs")
+RUN = os.path.join(HERE, "runs", "big_stairs2")
 CLIPS = os.path.join(HERE, "runs", "clips_home")
 FIGS = os.path.join(HERE, "runs", "figs")
 MODEL = os.path.join(HERE, "models", "big_dog_model.zip")
@@ -65,15 +65,14 @@ def voice(st, hv):
         "llm": [(0.5, "LLMには、場所の一覧とルールを与え、出力の形をJSON Schemaで固定しました。"),
                 (None, "存在しない部屋は出力できないため、そのまま安全に実行できます。")],
         "planner": [(0.5, "経路計画では、間取りを十センチの格子にし、ロボットの幅だけ障害物を太らせてから、A*で最短経路を探します。"),
-                    (None, "階をまたぐときは、階段の下と上を必ず通ります。")],
-        "train": [(0.5, "歩き方は、強化学習のPPOで身につけました。"),
-                  (None, "段差五センチから十八センチの階段や坂を、上達に合わせて難しくしながら、一億回以上練習しました。")],
+                    (None, "階段では、中央の線に沿って上り下りします。")],
+        "train": [(0.3, "歩き方は強化学習のPPOで、地形を少しずつ難しくしながら、一億回以上練習しました。")],
         "results": [(0.5, f"評価の結果、段差十五センチの上り階段は、{up15 * 100:.0f}パーセント上り切りました。"),
                     (None, f"家の中の配達の三つの経路は、平均{home_ok * 100:.0f}パーセントで、最後まで届けられました。")],
         "demo1": [(0.6, "それでは、日本語で指示を出してみます。ここからは二倍速です。"),
                   (None, "荷物をカゴに載せ、十四段の階段を上って、二階の寝室に届けます。")],
         "demo2": [(0.6, "次は一階で、キッチンから和室へお茶を届けます。扉は近づくと自動で開きます。")],
-        "discussion": [(0.5, "考察です。階段は上れるようになりましたが、失敗の多くは、階段の上り始めと下り始めで起きました。"),
+        "discussion": [(0.5, "考察です。転倒は六十回中三回で、すべて階段の九段目から十一段目でした。長い階段の練習が足りなかったと考えています。"),
                        (None, "今後は、腕を付けて扉の開け閉めや物の受け渡しを自分で行うこと、カメラ画像から部屋を認識することに取り組みたいと考えています。")],
     }
 
@@ -93,6 +92,7 @@ def duration(path):
 
 
 def main():
+    from home_demo import NAMES
     from narration import seconds as voice_seconds
     from narration import write_srt, write_track
     from overlay import image_card, llm_card, pairs_card, points_card, results_card, section_card, slide_title, system_card
@@ -140,7 +140,7 @@ def main():
         ("シミュレータ", "MuJoCo 上に、犬型ロボット・2 階建ての家・家具・自動ドアをすべて自作"),
         ("観測", "胴体の姿勢・速度、関節の角度・速度、速度指令、足元 50 点の地面の高さ（98 次元）"),
         ("報酬", "指令した速度で歩く＋足を段の上面から上げる − 傾き・滑り・急な動き・転倒"),
-        ("学習", "PPO・32 環境並列・1.2 億ステップ（約 14 時間）。階段の難しさを上達に合わせて上げる"),
+        ("学習", "PPO・32〜64 環境並列・約 1.2 億ステップ（約 13 時間）。階段の難しさを上達に合わせて上げる"),
     ], page=3)
     design = Image.new("RGB", (1800, 900), "white")
     dr = Image.open(os.path.join(FIGS, "robot_drawing.png"))
@@ -164,18 +164,18 @@ def main():
         [("外部に送らない", "間取りや指示を【PC の外に出さない】"), ("出力を型で縛る", "存在しない部屋や崩れた JSON を【出せない】"),
          ("役割を限定", "LLM は「どこへ・どの順で」だけ決める")], page=5)
     cards["planner"] = image_card(SIZE, "経路計画", Image.open(os.path.join(FIGS, "planner_steps.png")),
-                                  "階をまたぐときは【階段の下と上の通過点】を必ず通り、階段を正面からまっすぐ上り下りする", page=6)
+                                  "階をまたぐときは【階段の下と上の通過点】を通り、階段では【中央の線に沿う向きと 0.8 m/s の速さ】の指令に切り替える", page=6)
     cards["results"] = results_card(
         SIZE, "評価結果", "練習場の上り階段（段の高さ別、各 20 回）",
         [(f"{k} cm", v["up"]["success"]) for k, v in st.items() if int(k) in (5, 9, 12, 15, 18)],
-        "家の中の配達（各 20 回）", [["経路", "成功", "転倒"]] + [[k.replace("→", " → "), pct(v["success"]), pct(v["fell"])] for k, v in hv.items()],
-        "成功：中央から 2.6 m 先まで 15 秒以内に転ばずに進む", page=8)
+        "家の中の配達（各 20 回）", [["経路", "成功", "転倒"]] + [[" → ".join(NAMES[n] for n in k.split("→")), pct(v["success"]), pct(v["fell"])] for k, v in hv.items()],
+        "階段の成功：中央から 2.6 m 先まで 15 秒以内に転ばずに進む。配達の成功：すべての地点に順に着く", page=8)
     cards["discussion"] = points_card(SIZE, "考察と今後", "", [
-        ("階段は上り始め・下り始めが難しい", "失敗の多くは段に足をかける最初の数歩。足元の高さの見える範囲を前に広げる・速度を落とすなどの改善が考えられる"),
-        ("学習の速さ", "この PC の GPU では物理計算が速くならず、CPU 並列で 1.2 億ステップに約 14 時間かかった"),
+        ("転倒は長い階段の後半で起きた", "家の配達 60 回中の転倒 3 回は、すべて 9〜11 段目を上る途中。練習場の階段（約 8 段で成功）より長く上り続ける練習が足りない可能性"),
+        ("学習の速さ", "この PC の GPU では物理計算が速くならず、CPU 並列で約 1.2 億ステップに約 13 時間かかった"),
         ("今後", "腕を付けて扉の開け閉めや物の受け渡しを自分で行う、カメラ画像からの部屋の認識、実機での検証（sim-to-real）"),
     ], page=9)
-    train_card = section_card(SIZE, "強化学習による歩行の練習", "6 種類の地形で同時に練習（段差・坂・凸凹は上達に合わせて難しくする）")
+    train_card = section_card(SIZE, "強化学習による歩行の練習", "6 種類の地形で同時に練習（段差・坂・凸凹は上達に合わせて難しくする）", page=7)
 
     parts = [("op", args.op),
              ("title", card("title", 4, slide_title(args.slide, title, sub) if args.slide else section_card(SIZE, title, sub), lines("title")))]

@@ -40,6 +40,18 @@ def render_xml():
     return path
 
 
+def place(env, level, col, seed=0):
+    """地形のタイルの中央に、+x 向きで立たせる。"""
+    env.reset(seed=col + 10 * seed)
+    env.d.qpos[0:2] = (np.array([col, level]) + 0.5) * TILE
+    env.d.qpos[2] = env.terrain_height(*env.d.qpos[0:2]) + 0.49
+    env.d.qpos[3:7] = [1, 0, 0, 0]
+    env.d.qvel[:] = 0
+    mujoco.mj_forward(env.m, env.d)
+    env.cmd, env.until_cmd = np.array([0.6, 0.0, 0.0]), 10 ** 9
+    return env._obs()
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--model", required=True)
@@ -58,13 +70,8 @@ def main():
         env.first = False
         env.fell, env.dist = False, 0.0
         env.level = args.level
-        env.reset(seed=col)
-        env.d.qpos[0:2] = (np.array([col, args.level]) + 0.5) * TILE
-        env.d.qpos[2] = env.terrain_height(*env.d.qpos[0:2]) + 0.49
-        env.d.qpos[3:7] = [1, 0, 0, 0]
-        mujoco.mj_forward(env.m, env.d)
-        env.cmd, env.until_cmd = np.array([0.6, 0.0, 0.0]), 10 ** 9
-        sims.append((env, env._obs(), kind, mujoco.Renderer(env.m, 540, 640)))
+        env.col = col
+        sims.append((env, place(env, args.level, col), kind, mujoco.Renderer(env.m, 540, 640)))
     rise = STEP_MIN + (STEP_MAX - STEP_MIN) * args.level / 9
     writer = imageio.get_writer(args.out, fps=20, quality=8, macro_block_size=8)
     cam = mujoco.MjvCamera()
@@ -73,7 +80,9 @@ def main():
         for i, (env, obs, kind, r) in enumerate(sims):
             for _ in range(int(0.05 / 0.02 + 0.5)):
                 obs, _, term, _, _ = env.step(policy(obs))
-                if term:
+                center = (np.array([env.col, args.level]) + 0.5) * TILE
+                if term or np.max(np.abs(env.d.qpos[0:2] - center)) > 2.5:  # タイルの端まで来たら、学習と同じく中央からやり直す
+                    obs = place(env, args.level, env.col, seed=k)
                     break
             sims[i] = (env, obs, kind, r)
             cam.lookat[:] = [*env.d.qpos[:2], env.terrain_height(*env.d.qpos[:2]) + 0.3]

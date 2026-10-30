@@ -38,6 +38,8 @@ def curriculum():
     styles = {"flat": (GRAY, "-"), "rough": (SLATE, "--"), "hills": (SLATE, "-"), "stairs_up": (RED, "-"), "stairs_down": (RED, "--")}
     for k, (c, ls) in styles.items():
         ax.plot(steps, [float(lv[k]) for lv in levels], ls, color=c, lw=2, label=TERRAIN_JA[k])
+    ax.axvline(31, color=GRAY, lw=1)
+    ax.text(31.8, 4.6, "脚の動かせる範囲を広げた", color="#555555", fontsize=9)
     ax.set_xlabel("学習ステップ数 [百万]")
     ax.set_ylabel("難しさ（0〜1）")
     ax.set_ylim(-0.03, 1.03)
@@ -196,27 +198,32 @@ def learning():
 
     from gpu.make_assets import STEP_MAX, STEP_MIN
 
-    steps, levels = [], []
-    for line in open(os.path.join(HERE, "train_big_stairs.log"), encoding="utf-8", errors="ignore"):
-        m = re.search(r"\[ckpt\] step=(\d+) .*level stairs=([\d.]+)", line)
-        if m:
-            steps.append(int(m.group(1)) / 1e6)
-            levels.append(float(m.group(2)))
+    # 前半（31M まで）は脚の動かせる範囲が狭い設定。後半はそこから続けて学習した（ステップ数は通算）
+    steps, levels, offset = [], [], 0.0
+    for log, until in (("train_big_stairs.log", 31.0), ("train_big_stairs2.log", None)):
+        for line in open(os.path.join(HERE, log), encoding="utf-8", errors="ignore"):
+            m = re.search(r"\[ckpt\] step=(\d+) .*level stairs=([\d.]+)", line)
+            if m and (until is None or int(m.group(1)) / 1e6 <= until):
+                steps.append(offset + int(m.group(1)) / 1e6)
+                levels.append(float(m.group(2)))
+        offset = 31.0
     fig, ax = plt.subplots(figsize=(8, 3.6))
     ax.plot(steps, [100 * (STEP_MIN + (STEP_MAX - STEP_MIN) * lv / 9) for lv in levels], color=SLATE, lw=2,
             label="練習場で挑戦中の段差の高さ（平均）")
     ax.axhline(15, color=GRAY, ls="--", lw=1.5)
     ax.text(steps[0] if steps else 0, 15.3, "家の階段（15 cm）", color="#555555", fontsize=10)
+    ax.axvline(31, color=GRAY, lw=1)
+    ax.text(31.8, 4.6, "脚の動かせる範囲を広げた", color="#555555", fontsize=9)
     ax.set_xlabel("学習ステップ数 [百万]")
     ax.set_ylabel("段差 [cm]")
     ax.set_ylim(4, 19)
     ax.grid(alpha=0.3)
-    path = os.path.join(HERE, "runs", "big_stairs", "climb.json")
+    path = os.path.join(HERE, "runs", "big_stairs2", "climb.json")
     if os.path.exists(path):
         climb = json.load(open(path))
         xs = sorted(int(k) for k in climb)
         ax2 = ax.twinx()
-        ax2.plot([x / 1e6 for x in xs], [100 * climb[str(x)]["success"] for x in xs], "o-", color=RED, lw=2,
+        ax2.plot([31 + x / 1e6 for x in xs], [100 * climb[str(x)]["success"] for x in xs], "o-", color=RED, lw=2,
                  label="家の階段（14 段）を上り切れた割合")
         ax2.set_ylabel("成功率 [%]")
         ax2.set_ylim(-3, 103)

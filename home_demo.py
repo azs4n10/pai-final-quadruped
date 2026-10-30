@@ -92,7 +92,9 @@ class Scene:
             self.upper = [i for i in range(self.m.ngeom) if self.m.geom_bodyid[i] == 0 and self.m.geom_pos[i][2] > home.FH - home.SLAB - 0.01]
             self.upper_doors = [i for i in range(self.m.ngeom) if self.m.body_mocapid[self.m.geom_bodyid[i]] in
                                 [self.doors[k] for k, dd in enumerate(home.DOORS) if dd[1] == 2]]
-            self.walls = [i for i in range(self.m.ngeom) if self.m.geom_group[i] == 1 and self.m.geom_bodyid[i] == 0]
+            door_bodies = [self.m.body(f"door_{n}").id for n, *_ in home.DOORS]
+            self.walls = [i for i in range(self.m.ngeom) if self.m.geom_type[i] == mujoco.mjtGeom.mjGEOM_BOX
+                          and (self.m.geom_bodyid[i] == 0 or self.m.geom_bodyid[i] in door_bodies)]  # 壁・扉・家具・階段
             self.rgba0 = self.m.geom_rgba.copy()
             self.cam_xy, self.cam_az = self.d.qpos[:2].copy(), None
         mujoco.mj_forward(self.m, self.d)
@@ -140,8 +142,10 @@ class Scene:
         eye = self.cam_xy - CAM["distance"] * np.cos(np.radians(CAM["elevation"])) * np.array([np.cos(a), np.sin(a)])
         seg = self.d.qpos[:2] - eye
         for i in self.walls:
-            lo = self.m.geom_pos[i][:2] - self.m.geom_size[i][:2]
-            hi = self.m.geom_pos[i][:2] + self.m.geom_size[i][:2]
+            if self.d.geom_xpos[i][2] + self.m.geom_size[i][2] < self.d.qpos[2] + 0.1:  # ロボットの胴体より低いもの（床・段）はそのまま
+                continue
+            lo = self.d.geom_xpos[i][:2] - self.m.geom_size[i][:2]
+            hi = self.d.geom_xpos[i][:2] + self.m.geom_size[i][:2]
             t0, t1 = 0.0, 1.0
             for k in range(2):
                 if abs(seg[k]) < 1e-9:
@@ -251,6 +255,7 @@ def main():
     else:
         route = [r for r in args.route.split(",") if r]
         source = "cached" if args.text else "manual"
+    route = [r for i, r in enumerate(route) if i == 0 or r != route[i - 1]]  # 同じ場所が続く指示は 1 つにまとめる
     print(f"[plan] {source}: {route} pickup={pickup} dropoff={dropoff} {reply}", flush=True)
     writer = imageio.get_writer(args.out, fps=20, quality=8, macro_block_size=8)
     log = run(route, pickup=pickup, dropoff=dropoff, instruction=args.text, reply=reply, label=args.label,

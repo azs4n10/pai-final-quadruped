@@ -150,8 +150,11 @@ def compose(frame, instruction, reply, route, leg, visited, trail, t, label, spe
                 d.text((x + 10, y2), "→", font=font(30, "bold"), fill=INK, anchor="lm")
                 x += 48
         d.text((W - 70, y1), foot, font=font(32, "bold"), fill=INK, anchor="rm")
-        if reply:
-            d.text((W - 70, y2), reply, font=font(28), fill=(90, 90, 90), anchor="rm")
+        size = 28
+        while reply and size > 20 and d.textlength(reply, font=font(size)) > W - 70 - x - 40:  # 経路の札に重ねない
+            size -= 2
+        if reply and d.textlength(reply, font=font(size)) <= W - 70 - x - 40:
+            d.text((W - 70, y2), reply, font=font(size), fill=(90, 90, 90), anchor="rm")
     else:
         panel(d, (40, H - 120, W - 40, H - 30), alpha=235, fill=(255, 255, 255))
         d.text((70, H - 75), label, font=font(44, "bold"), fill=INK, anchor="lm")

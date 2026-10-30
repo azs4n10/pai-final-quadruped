@@ -267,14 +267,17 @@ def results_card(size, title, chart_title, bars, table_title, table, note="", pa
     tx0, tx1, ty = 1010, w - 90, 330
     d.text((tx0, 220), table_title, font=font(36, "bold"), fill=INK)
     cols = len(table[0])
-    widths = [0.52] + [(0.48 / (cols - 1))] * (cols - 1)
+    widths = [0.66] + [(0.34 / (cols - 1))] * (cols - 1)
     rh = 70
     for r, row in enumerate(table):
         x = tx0
         for c, cell in enumerate(row):
             cw = (tx1 - tx0) * widths[c]
             d.rectangle((x, ty, x + cw, ty + rh), fill=SLATE if r == 0 else (255, 255, 255), outline=INK, width=2)
-            d.text((x + (16 if c == 0 else cw / 2), ty + rh / 2), cell, font=font(28, "bold" if r == 0 else "regular"),
+            fs = 28
+            while fs > 18 and d.textlength(cell, font=font(fs)) > cw - 24:  # 長い経路名は文字を小さくして収める
+                fs -= 1
+            d.text((x + (16 if c == 0 else cw / 2), ty + rh / 2), cell, font=font(fs, "bold" if r == 0 else "regular"),
                    fill=(255, 255, 255) if r == 0 else INK, anchor="lm" if c == 0 else "mm")
             x += cw
         ty += rh
