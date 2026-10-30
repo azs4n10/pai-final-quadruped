@@ -1,0 +1,13 @@
+10000000 {'success': 0.0, 'fell': 0.2}
+20000000 {'success': 0.0, 'fell': 0.2}
+30000000 {'success': 0.0, 'fell': 0.5}
+40000000 {'success': 0.1, 'fell': 0.7}
+--- 指令を stairs_command に変更、評価をやり直し
+10000000 {'success': 0.4, 'fell': 0.3}
+20000000 {'success': 0.1, 'fell': 0.2}
+30000000 {'success': 1.0, 'fell': 0.0}
+40000000 {'success': 0.8, 'fell': 0.2}
+50000000 {'success': 0.7, 'fell': 0.1}
+60000000 {'success': 0.9, 'fell': 0.1}
+70000000 {'success': 1.0, 'fell': 0.0}
+80000000 {'success': 0.9, 'fell': 0.1}

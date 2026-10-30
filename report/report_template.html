@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>日本語で指示できる四足歩行ロボット</title>
+<style>
+  @page { size: A4; margin: 15mm 15mm; }
+  body { font-family: "Yu Gothic", "Meiryo", sans-serif; font-size: 10.3pt; line-height: 1.62; color: #141414; }
+  h1 { font-size: 19pt; margin: 0 0 2px; }
+  .sub { font-size: 10.5pt; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 2px solid #141414; }
+  h2 { font-size: 13pt; margin: 16px 0 6px; padding-bottom: 2px; border-bottom: 1.5px solid #141414; }
+  h3 { font-size: 10.8pt; margin: 10px 0 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0; font-size: 9.6pt; }
+  th, td { border: 1px solid #141414; padding: 3px 7px; text-align: left; vertical-align: top; }
+  th { background: #44546a; color: #fff; white-space: nowrap; }
+  td.h { background: #d9d9d9; font-weight: bold; white-space: nowrap; }
+  td.n { text-align: right; }
+  .flow { display: flex; align-items: stretch; gap: 6px; margin: 8px 0; font-size: 9.4pt; }
+  .flow div.box { flex: 1; border: 1px solid #141414; padding: 5px 6px; text-align: center; background: #ffd966; }
+  .flow div.ar { align-self: center; font-size: 13pt; }
+  figure { margin: 6px 0; text-align: center; }
+  figure img { max-width: 100%; }
+  figcaption { font-size: 8.8pt; }
+  .two { display: flex; gap: 8px; align-items: flex-start; }
+  .two figure { flex: 1; }
+  ul { margin: 3px 0; padding-left: 20px; }
+  li { margin: 1px 0; }
+  .num { display: inline-block; background: #44546a; color: #fff; font-weight: bold; padding: 0 6px; margin-right: 6px; }
+  .red { color: #c00000; font-weight: bold; }
+  code { font-family: Consolas, monospace; font-size: 9pt; background: #f2f2f2; padding: 0 3px; }
+  .deg { font-family: "Segoe UI", Arial, sans-serif; }
+  table, figure, .two, .flow { page-break-inside: avoid; }
+  h2, h3 { page-break-after: avoid; }
+</style>
+</head>
+<body>
+
+<h1>日本語で指示できる四足歩行ロボット</h1>
+<div class="sub">ローカル LLM × 経路計画 × 強化学習で、2 階まで荷物を運ぶ ― Physical AI 応用1 最終課題</div>
+
+<h2>1. 概要</h2>
+<p>「玄関に届いた荷物を、2 階の寝室まで運んで」のような日本語の指示を出すと、犬型の四足歩行ロボットが 2 階建ての家の中を歩き、14 段の階段を上り下りして荷物を届けるシステムを、物理シミュレータ MuJoCo 上に作った。指示の解釈はパソコンの中で動く LLM（gemma4 / Ollama）、経路は間取り図からの A* 探索、歩行は強化学習（PPO）で得た「指令した速度で歩く」方策が担当する。ロボット・家・家具・自動ドアはすべて自作した。</p>
+<div class="flow">
+  <div class="box"><b>日本語の指示</b><br>「玄関の荷物を 2 階の寝室へ」</div><div class="ar">→</div>
+  <div class="box"><b>ローカル LLM</b><br>場所の順番と<br>荷物の受け取り先・届け先</div><div class="ar">→</div>
+  <div class="box"><b>経路計画</b><br>階ごとの A*<br>階段は上下の通過点</div><div class="ar">→</div>
+  <div class="box"><b>歩行方策</b><br>強化学習（PPO）<br>速度指令で階段も歩く</div>
+</div>
+
+<h2>2. 動機</h2>
+<p>家の中で荷物を部屋から部屋へ運ぶロボットを、専門知識のない人が普段の言葉で動かせるようにしたいと考えた。そのために次の 3 つの課題を、それぞれ次の方法で解いた。</p>
+<table>
+  <tr><th style="width:42%">課題</th><th>選んだ方法</th></tr>
+  <tr><td>一般の家には 2 階への階段や段差がある</td><td>車輪ではなく<b>四足歩行</b>にし、足元の地形を見ながら階段を上り下りする方策を学習する</td></tr>
+  <tr><td>指示は普段の言葉で出したい</td><td><b>LLM</b> で指示を「立ち寄る場所の順番」と「荷物の受け取り先・届け先」に変換する</td></tr>
+  <tr><td>家の間取りや会話を外部に送りたくない</td><td>外部の API を使わず、<b>パソコンの中で動く LLM</b>（Ollama）を使う</td></tr>
+</table>
+
+<h2>3. 手法</h2>
+<h3><span class="num">1</span>犬型ロボット（自作）</h3>
+<div class="two">
+  <figure style="flex:1.1"><img src="big_robot.jpg"><figcaption>自作の犬型ロボット（左：斜め前、右：真横）</figcaption></figure>
+  <figure style="flex:0.9"><img src="robot_drawing.png"><figcaption>図面（寸法・関節）</figcaption></figure>
+</div>
+<table>
+  <tr><td class="h">体</td><td>胴体 0.73 m、脚 4 本（太もも・すね各 0.29 m）、各脚は外転・股・膝の 3 関節で計 12 関節、全体で 34 kg、立った胴体の高さ 0.46 m。寸法・関節・質量を MJCF（XML）で記述した。外装やセンサーユニットは見た目だけの部品（質量 0・接触なし）</td></tr>
+  <tr><td class="h">制御</td><td>関節の位置制御（比例ゲイン 230、最大トルク 115 N·m）。方策は「立ち姿勢からの関節角のずれ」（±0.5 rad）を 50 Hz で出力</td></tr>
+  <tr><td class="h">観測（98 次元）</td><td>胴体の速度・角速度・重力の向き、12 関節の角度と速度、直前の行動、速度指令（前後・左右・旋回）、<b>足元 50 点の地面の高さ</b>（前 0.9 m〜後ろ 0.45 m、左右 0.4 m）</td></tr>
+  <tr><td class="h">報酬</td><td>加点：指令した速度に合う、足を地面から離して前へ振り出す（滞空時間）。減点：上下の揺れ・傾き・関節の可動域の端・急な動き・トルク・足の滑り・振り出す足が段の上面から 15 cm の高さに合わない・胴体の高さのずれ・転倒（MuJoCo Playground の Go1 の報酬を参考に、足の高さを段の上面から測るよう変えた）</td></tr>
+  <tr><td class="h">練習場</td><td>60 m × 36 m の高さマップ（3 cm 間隔）を、難しさ 10 段階×地形 6 種類のタイル（6 m 四方）に分けた。上り階段・下り階段（段差 5〜18 cm、踏み面 26・30 cm）、坂（5〜25<span class="deg">°</span>）、凸凹</td></tr>
+  <tr><td class="h">学習</td><td>PPO（Stable-Baselines3）、32 環境並列、方策・価値とも 512・256・128 の MLP。1 エピソード 20 秒の終わりに、2.4 m 以上進めたら 1 段難しいタイル、転ぶか 1 m 未満なら 1 段易しいタイルへ移す（カリキュラム学習）。{{STEPS}} ステップ（約 {{HOURS}} 時間）</td></tr>
+</table>
+
+<h3><span class="num">2</span>2 階建ての家</h3>
+<div class="two">
+  <figure><img src="home_1f.jpg"><figcaption>1 階（玄関ホール・階段、LDK、書斎、和室）</figcaption></figure>
+  <figure><img src="home_2f.jpg"><figcaption>2 階（寝室、子ども部屋、書庫、ホール）</figcaption></figure>
+</div>
+<ul>
+  <li>12 m × 8 m の 2 階建て。階段は 1 段 15 cm × 14 段（2 階の床まで 2.1 m）、踏み面 30 cm。2 階の吹き抜けのまわりに手すり。</li>
+  <li>家具はソファ・テレビ・食卓と椅子・キッチン・冷蔵庫・ベッド・本棚・机・おもちゃ箱・観葉植物・ラグなどを、基本形状を組み合わせて作った。布・木目・壁紙・床の画像も自作した。</li>
+  <li>部屋の入口には自動の引き戸（和室は障子）があり、ロボットが 1.8 m 以内に来ると開く。</li>
+  <li>荷物は、受け取る場所で家の人が背中のカゴに載せ、届け先で降ろす想定（画面では箱の表示を切り替える）。</li>
+  <li>歩く面の物理と足元のレイ：床は箱、階段は練習場と同じ 3 cm 間隔の高さマップで表した。</li>
+</ul>
+
+<h3><span class="num">3</span>LLM による指示の解釈</h3>
+<p>10 か所の場所（充電ステーション・リビング・キッチン・書斎・和室・寝室・子ども部屋・書庫・2 階のホールなど）の名前・階・座標をシステムプロンプトで与え、指示を <code>{"route": [...], "pickup": ..., "dropoff": ..., "reply": "..."}</code> の JSON に変換させる。Ollama の構造化出力（JSON Schema）で、場所の名前を列挙型に制限した。</p>
+
+<h3><span class="num">4</span>経路計画と速度指令</h3>
+<figure><img src="planner_steps.png" style="max-width:100%"><figcaption>経路計画の手順（1 階、充電ステーション → キッチン）</figcaption></figure>
+<p>階ごとに、壁・家具・手すりを 10 cm 格子の地図に描き、ロボットの幅の半分＋余裕（0.4 m）だけ太らせて A*（8 近傍）で最短経路を探し、見通しのきく点まで飛ばして経由地を間引く。階をまたぐときは、階段の下（1 階）と上（2 階）の通過点を必ず通す。経由地へは、向きのずれから旋回の速度、距離と向きから前進の速度を決めて方策に指令する。</p>
+
+<h2>4. 工夫した点</h2>
+<ul>
+  <li><b>役割の分担</b>：LLM は「どこへ・どの順で・何を運ぶか」、経路計画は「壁や家具を避ける道筋」、歩行方策は「指令した速度で段差も歩く」だけを担当する。歩行方策は家の間取りを知らないので、地図を作り直すだけで別の家でも使える。</li>
+  <li><b>足元の地形を測る</b>：胴体のまわり 50 点の地面の高さを観測に入れ、振り出す足の高さも段の上面から測って報酬に入れた。</li>
+  <li><b>地形ごとのタイルでのカリキュラム</b>：難しさの違うタイルを並べ、上達したら次のタイルへ移す。最も難しいタイルを越えたらランダムな難しさから練習し直し、易しい地形を忘れないようにした。</li>
+  <li><b>学習した地形と家の階段を揃える</b>：家の階段の物理を、練習場と同じ 3 cm 間隔の高さマップで作った（角の鋭い箱の段では成功率が下がることを、以前の小型のロボットで確かめていた）。</li>
+  <li><b>LLM の出力を型で縛る</b>：存在しない部屋の名前や崩れた形式が実行系に渡らない。</li>
+  <li><b>見せ方</b>：1 階にいる間は 2 階を外して見せ、カメラとロボットの間の壁は半透明にした。画面には指示文・LLM の計画・1 階と 2 階の間取り図と軌跡を重ねた。</li>
+</ul>
+
+<h2>5. 評価方法と結果</h2>
+<h3>(1) 練習場の階段</h3>
+<p>上り階段・下り階段のタイルの中央から、前進の速度指令 0.6 m/秒で歩かせ、15 秒以内に転ばずに中央から 2.6 m 先まで進めたら成功とした（各 20 回、向きはランダム）。</p>
+{{STAIRS_TABLE}}
+<h3>(2) 家の中の配達</h3>
+<p>LLM が変換した経路を、初期位置の乱数を変えて各 20 回実行した。全地点に順に着けば成功とした。</p>
+{{HOME_TABLE}}
+{{HOME_TEXT}}
+<div class="two">
+  <figure><img src="demo1.jpg"><figcaption>デモ画面（2 階の寝室へ荷物を運ぶ、2 倍速）</figcaption></figure>
+  <figure><img src="demo2.jpg"><figcaption>階段を上る様子</figcaption></figure>
+</div>
+<figure><img src="learning.png" style="max-width:76%"><figcaption>学習の経過（タイルの難しさの平均）</figcaption></figure>
+
+<h2>6. 考察と今後</h2>
+<ul>
+{{DISCUSSION}}
+  <li><b>学習の速さ</b>：GPU で物理計算を行う MJX（MuJoCo の GPU 版）も試したが、この PC の GPU（RTX 3050 Laptop、4 GB）では 1 ステップごとの固定の待ち時間が大きく、1,024 環境で毎秒約 4,700 ステップにとどまった。CPU の並列（32 環境）とあまり変わらないため、CPU で学習した。</li>
+  <li><b>今後</b>：腕を付けて扉の開け閉めや物の受け渡しを自分で行う、カメラ画像から部屋や物を認識する（VLM）、モデル誤差や外乱をランダム化した学習で実機の四足ロボットへ移す（sim-to-real）。</li>
+</ul>
+
+<h2>7. 実行方法</h2>
+<p>コード一式：<a href="https://github.com/azs4n10/pai-final-quadruped">https://github.com/azs4n10/pai-final-quadruped</a>（README 参照）。主なファイル：<code>gpu/make_assets.py</code>（大型版のロボットと練習場）、<code>stairs_cpu.py</code>（学習環境）、<code>train_big.py</code>（学習）、<code>home.py</code>（2 階建ての家・経路計画）、<code>planner.py</code>（LLM）、<code>home_demo.py</code>（指示の実行と録画）、<code>evaluate_big.py</code>（評価）、<code>make_video.py</code>（動画）。<br>
+例：<code>python home_demo.py --text "玄関に届いた荷物を、2階の寝室まで運んで"</code></p>
+<p>使用ツール：MuJoCo 3.12 / Gymnasium 1.3 / Stable-Baselines3 2.9（PPO）/ PyTorch / Ollama（gemma4:e4b）/ Python 3.12。動画のデモは 2 倍速（画面に表示）。動画のナレーションは VOICEVOX ENGINE で合成した（音声：VOICEVOX:ずんだもん）。</p>
+
+</body>
+</html>
